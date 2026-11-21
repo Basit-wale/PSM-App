@@ -1,0 +1,2 @@
+ALTER TABLE "Organization"
+ADD COLUMN "defaultTaxRate" DECIMAL(5,2) NOT NULL DEFAULT 0;
