@@ -58,6 +58,7 @@ export async function setupOrganization(input: unknown): Promise<SetupResult> {
   SELECT 1 AS locked
   FROM lock_result
 `;
+      console.log("[SETUP DEBUG] Authenticated user ID:", session.user.id);
 
       const existingMembership = await tx.organizationMember.findFirst({
         where: {
@@ -70,6 +71,11 @@ export async function setupOrganization(input: unknown): Promise<SetupResult> {
       if (existingMembership) {
         throw new Error("EXISTING_ORGANIZATION");
       }
+
+      console.log(
+        "[SETUP DEBUG] Existing active membership:",
+        Boolean(existingMembership),
+      );
 
       const baseSlug = createSlug(organizationName);
       const slug = `${baseSlug}-${randomUUID().slice(0, 8)}`;
