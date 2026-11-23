@@ -38,6 +38,7 @@ type Expense = {
   expenseDate: string;
   createdAt: string;
   paidAt: string | null;
+  submittedByMemberId: string;
 };
 
 type Props = {
@@ -48,6 +49,7 @@ type Props = {
   canApprove: boolean;
   canPay: boolean;
   canManageCategories: boolean;
+  currentMemberId: string;
 };
 
 function localDate() {
@@ -188,6 +190,7 @@ export function ExpenseManager({
   branches,
   categories,
   expenses,
+  currentMemberId,
   canCreate,
   canApprove,
   canPay,
@@ -940,32 +943,34 @@ export function ExpenseManager({
 
                     <td className="px-4 py-3.5">
                       <div className="flex justify-end gap-1.5">
-                        {canApprove && expense.status === "PENDING" && (
-                          <>
-                            <Button
-                              size="xs"
-                              disabled={isPending}
-                              onClick={() =>
-                                handleReview(expense.id, "APPROVED")
-                              }
-                              className="h-7 rounded-md bg-[#617968] px-2.5 text-[10px] text-white hover:bg-[#526957]"
-                            >
-                              Approve
-                            </Button>
+                        {canApprove &&
+                          expense.submittedByMemberId !== currentMemberId &&
+                          expense.status === "PENDING" && (
+                            <>
+                              <Button
+                                size="xs"
+                                disabled={isPending}
+                                onClick={() =>
+                                  handleReview(expense.id, "APPROVED")
+                                }
+                                className="h-7 rounded-md bg-[#617968] px-2.5 text-[10px] text-white hover:bg-[#526957]"
+                              >
+                                Approve
+                              </Button>
 
-                            <Button
-                              size="xs"
-                              variant="outline"
-                              disabled={isPending}
-                              onClick={() =>
-                                handleReview(expense.id, "REJECTED")
-                              }
-                              className="h-7 rounded-md border-[#E3D1CE] px-2.5 text-[10px] text-[#A35B54] hover:bg-[#FBF0EE]"
-                            >
-                              Reject
-                            </Button>
-                          </>
-                        )}
+                              <Button
+                                size="xs"
+                                variant="outline"
+                                disabled={isPending}
+                                onClick={() =>
+                                  handleReview(expense.id, "REJECTED")
+                                }
+                                className="h-7 rounded-md border-[#E3D1CE] px-2.5 text-[10px] text-[#A35B54] hover:bg-[#FBF0EE]"
+                              >
+                                Reject
+                              </Button>
+                            </>
+                          )}
 
                         {canPay && expense.status === "APPROVED" && (
                           <Button

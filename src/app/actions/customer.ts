@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { requireBranchPermission } from "@/lib/auth-guard";
 import { createCustomerSchema } from "@/lib/validations/customer";
 import { z } from "zod";
+import { requirePermission, requireBranchAccess } from "@/lib/auth-guard";
 
 type ActionResult =
   | {
@@ -308,6 +309,335 @@ export async function updateCustomer(input: unknown): Promise<ActionResult> {
       error: isUniqueConstraint
         ? "Another customer already uses this phone number."
         : getSafeErrorMessage(error),
+    };
+  }
+}
+
+const smsBroadcastInputSchema = z.object({
+  branchId: z.string().uuid().nullable(),
+  message: z.string().trim().min(1, "Enter an SMS message.").max(1530),
+});
+
+type SmsBroadcastResult =
+  | {
+      success: true;
+      campaignId: string;
+      recipientCount: number;
+    }
+  | {
+      success: false;
+      error: string;
+    };
+
+function normalizeSmsPhone(phone: string): string | null {
+  let digits = phone.replace(/\D/g, "");
+
+  if (digits.startsWith("00")) {
+    digits = digits.slice(2);
+  }
+
+  if (digits.startsWith("0") && digits.length === 11) {
+    digits = `234${digits.slice(1)}`;
+  } else if (digits.length === 10) {
+    digits = `234${digits}`;
+  }
+
+  return /^234\d{10}$/.test(digits) ? digits : null;
+}
+
+async function getEligibleSmsRecipients(
+  organizationId: string,
+  branchId: string | null,
+) {
+  const customers = await db.customer.findMany({
+    where: {
+      organizationId,
+      status: "ACTIVE",
+      smsOptIn: true,
+      ...(branchId
+        ? {
+            branches: {
+              some: {
+                branchId,
+                organizationId,
+              },
+            },
+          }
+        : {}),
+    },
+    select: {
+      id: true,
+      phone: true,
+    },
+  });
+
+  const uniqueRecipients = new Map<
+    string,
+    { customerId: string; phone: string }
+  >();
+
+  for (const customer of customers) {
+    const phone = normalizeSmsPhone(customer.phone);
+
+    if (phone && !uniqueRecipients.has(phone)) {
+      uniqueRecipients.set(phone, {
+        customerId: customer.id,
+        phone,
+      });
+    }
+  }
+
+  return Array.from(uniqueRecipients.values());
+}
+
+export async function getSmsBroadcastRecipientCount(
+  branchId: string | null,
+): Promise<{ success: boolean; count: number; error?: string }> {
+  try {
+    const member = await getCustomerManagementContext();
+
+    const context = await requirePermission(
+      member.organizationId,
+      "campaigns:manage",
+    );
+
+    if (branchId) {
+      await requireBranchAccess(context, branchId);
+    } else if (context.role !== "OWNER" && context.role !== "ADMIN") {
+      return {
+        success: false,
+        count: 0,
+        error: "Select one of your assigned branches.",
+      };
+    }
+
+    const recipients = await getEligibleSmsRecipients(
+      context.organizationId,
+      branchId,
+    );
+
+    return {
+      success: true,
+      count: recipients.length,
+    };
+  } catch (error) {
+    console.error("SMS recipient count failed:", error);
+
+    return {
+      success: false,
+      count: 0,
+      error:
+        error instanceof Error &&
+        error.message === "You do not have permission to perform this action."
+          ? "You do not have permission to manage SMS campaigns."
+          : "Unable to calculate the SMS recipient count.",
+    };
+  }
+}
+
+export async function sendSmsBroadcast(
+  input: unknown,
+): Promise<SmsBroadcastResult> {
+  const parsed = smsBroadcastInputSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid SMS details.",
+    };
+  }
+
+  const apiToken = process.env.BULKSMSNIGERIA_API_TOKEN;
+  const senderId = process.env.BULKSMSNIGERIA_SENDER_ID;
+  const sandbox = process.env.BULKSMSNIGERIA_SANDBOX !== "false";
+
+  if (!apiToken || !senderId) {
+    return {
+      success: false,
+      error: "SMS provider credentials have not been configured.",
+    };
+  }
+
+  if (senderId.length > 11) {
+    return {
+      success: false,
+      error: "The SMS sender ID cannot exceed 11 characters.",
+    };
+  }
+
+  let campaignId: string | null = null;
+
+  try {
+    const member = await getCustomerManagementContext();
+
+    const context = await requirePermission(
+      member.organizationId,
+      "campaigns:manage",
+    );
+
+    const { branchId, message } = parsed.data;
+
+    if (branchId) {
+      await requireBranchAccess(context, branchId);
+    } else if (context.role !== "OWNER" && context.role !== "ADMIN") {
+      throw new Error("Select one of your assigned branches.");
+    }
+
+    const recipients = await getEligibleSmsRecipients(
+      context.organizationId,
+      branchId,
+    );
+
+    if (recipients.length === 0) {
+      throw new Error(
+        "There are no eligible SMS subscribers in this selection.",
+      );
+    }
+
+    if (recipients.length > 10000) {
+      throw new Error("This campaign exceeds the 10,000-recipient limit.");
+    }
+
+    campaignId = await db.$transaction(async (tx) => {
+      const campaign = await tx.smsCampaign.create({
+        data: {
+          organizationId: context.organizationId,
+          branchId,
+          createdByMemberId: context.memberId,
+          message,
+          senderId,
+          status: "SENDING",
+          recipientCount: recipients.length,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      await tx.smsRecipient.createMany({
+        data: recipients.map((recipient) => ({
+          organizationId: context.organizationId,
+          campaignId: campaign.id,
+          customerId: recipient.customerId,
+          phone: recipient.phone,
+          status: "PENDING" as const,
+        })),
+      });
+
+      return campaign.id;
+    });
+
+    const baseUrl = sandbox
+      ? "https://www.bulksmsnigeria.com/api/sandbox/v2"
+      : "https://www.bulksmsnigeria.com/api/v2";
+
+    const response = await fetch(`${baseUrl}/sms`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        from: senderId,
+        to: recipients.map((recipient) => recipient.phone).join(","),
+        body: message,
+        gateway: "direct-refund",
+      }),
+      cache: "no-store",
+    });
+
+    const result = (await response.json().catch(() => null)) as {
+      status?: string;
+      message?: string;
+      data?: {
+        id?: string;
+        message_id?: string;
+      };
+      message_id?: string;
+    } | null;
+
+    if (!response.ok || result?.status === "error") {
+      throw new Error(
+        result?.message || "The SMS provider rejected the campaign.",
+      );
+    }
+
+    const providerMessageId =
+      result?.data?.message_id ||
+      result?.data?.id ||
+      result?.message_id ||
+      null;
+
+    await db.$transaction([
+      db.smsRecipient.updateMany({
+        where: {
+          campaignId,
+          organizationId: context.organizationId,
+        },
+        data: {
+          status: "SENT",
+          sentAt: new Date(),
+          providerMessageId,
+        },
+      }),
+      db.smsCampaign.update({
+        where: {
+          id: campaignId,
+        },
+        data: {
+          status: "SENT",
+          sentCount: recipients.length,
+          providerMessageId,
+        },
+      }),
+    ]);
+
+    return {
+      success: true,
+      campaignId,
+      recipientCount: recipients.length,
+    };
+  } catch (error) {
+    console.error("SMS broadcast failed:", error);
+
+    if (campaignId) {
+      try {
+        await db.$transaction([
+          db.smsRecipient.updateMany({
+            where: { campaignId },
+            data: {
+              status: "FAILED",
+              errorMessage: "SMS provider rejected or failed the request.",
+            },
+          }),
+          db.smsCampaign.update({
+            where: { id: campaignId },
+            data: {
+              status: "FAILED",
+              failedCount: await db.smsRecipient.count({
+                where: { campaignId },
+              }),
+            },
+          }),
+        ]);
+      } catch (updateError) {
+        console.error("SMS campaign status update failed:", updateError);
+      }
+    }
+
+    const message = error instanceof Error ? error.message : "";
+
+    return {
+      success: false,
+      error:
+        message === "You do not have permission to perform this action."
+          ? "You do not have permission to manage SMS campaigns."
+          : message === "AUTH_REQUIRED"
+            ? "Please sign in to continue."
+            : message === "ORGANIZATION_ACCESS_REQUIRED"
+              ? "You do not have active organization access."
+              : message || "The SMS campaign could not be sent.",
     };
   }
 }

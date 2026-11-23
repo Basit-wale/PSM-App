@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useTransition, type FormEvent } from "react";
+
 import {
   createJournalEntry,
   createLedgerAccount,
   postJournalEntry,
 } from "@/app/actions/accounting";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -100,6 +102,7 @@ export function AccountingManager({
   canManage,
 }: Props) {
   const [isPending, startTransition] = useTransition();
+
   const [accountList] = useState(accounts);
   const [entryList, setEntryList] = useState(entries);
 
@@ -111,6 +114,7 @@ export function AccountingManager({
   const [branchId, setBranchId] = useState("");
   const [entryDescription, setEntryDescription] = useState("");
   const [reference, setReference] = useState("");
+
   const [entryDate, setEntryDate] = useState(
     new Date().toISOString().slice(0, 10),
   );
@@ -130,6 +134,7 @@ export function AccountingManager({
     (sum, line) => sum + (Number(line.debit) || 0),
     0,
   );
+
   const totalCredit = lines.reduce(
     (sum, line) => sum + (Number(line.credit) || 0),
     0,
@@ -240,56 +245,125 @@ export function AccountingManager({
     });
   }
 
+  const draftCount = entryList.filter(
+    (entry) => entry.status === "DRAFT",
+  ).length;
+
+  const postedCount = entryList.filter(
+    (entry) => entry.status === "POSTED",
+  ).length;
+
   return (
-    <div className="accounting-page space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Accounting</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          Manage your chart of accounts and journal entries.
-        </p>
+    <div className="accounting-page space-y-7">
+      {/* Page heading */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#829987]">
+            Finance & bookkeeping
+          </p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#263D3C]">
+            Accounting
+          </h1>
+          <p className="mt-1 text-sm text-[#78847C]">
+            Manage your chart of accounts and journal entries.
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-[#DFE3D9] bg-[#EFF0E9] px-4 py-3">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-[#78847C]">
+            Accounting records
+          </p>
+          <p className="mt-1 text-sm font-semibold text-[#263D3C]">
+            {entryList.length} journal entries
+          </p>
+        </div>
       </div>
 
+      {/* Feedback messages */}
       {message && (
-        <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+        <div className="rounded-lg border border-[#C9D9CB] bg-[#EDF4EC] p-4 text-sm text-[#365B43]">
           {message}
         </div>
       )}
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           {error}
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-lg border p-4">
-          <p className="text-sm text-neutral-500">Ledger accounts</p>
-          <p className="mt-2 text-2xl font-semibold">{accountList.length}</p>
-        </div>
-        <div className="rounded-lg border p-4">
-          <p className="text-sm text-neutral-500">Journal entries</p>
-          <p className="mt-2 text-2xl font-semibold">{entryList.length}</p>
-        </div>
-        <div className="rounded-lg border p-4">
-          <p className="text-sm text-neutral-500">Draft entries</p>
-          <p className="mt-2 text-2xl font-semibold">
-            {entryList.filter((entry) => entry.status === "DRAFT").length}
+      {/* Summary cards */}
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="rounded-xl border border-[#E2E1D8] bg-[#FBFAF7] p-5">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-[#78847C]">
+              Ledger accounts
+            </p>
+            <span className="rounded-lg bg-[#EFF0E9] px-2.5 py-2 text-xs text-[#617C68]">
+              Accounts
+            </span>
+          </div>
+          <p className="mt-4 text-3xl font-semibold tracking-tight text-[#263D3C]">
+            {accountList.length}
+          </p>
+          <p className="mt-1 text-xs text-[#8A948B]">
+            Total accounts in your ledger
           </p>
         </div>
-      </div>
 
+        <div className="rounded-xl border border-[#D4DDD2] bg-[#F6F7F1] p-5">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-[#78847C]">
+              Journal entries
+            </p>
+            <span className="rounded-lg bg-[#E5ECE3] px-2.5 py-2 text-xs text-[#617C68]">
+              Entries
+            </span>
+          </div>
+          <p className="mt-4 text-3xl font-semibold tracking-tight text-[#263D3C]">
+            {entryList.length}
+          </p>
+          <p className="mt-1 text-xs text-[#8A948B]">
+            Total recorded transactions
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-[#E2E1D8] bg-[#FBFAF7] p-5">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-[#78847C]">Draft entries</p>
+            <span className="rounded-lg bg-[#F1EEE3] px-2.5 py-2 text-xs text-[#927A43]">
+              Pending
+            </span>
+          </div>
+          <p className="mt-4 text-3xl font-semibold tracking-tight text-[#263D3C]">
+            {draftCount}
+          </p>
+          <p className="mt-1 text-xs text-[#8A948B]">
+            {postedCount} posted entries
+          </p>
+        </div>
+      </section>
+
+      {/* Create journal entry */}
       {canManage && (
-        <section className="rounded-lg border p-5">
-          <h2 className="text-lg font-semibold">Create journal entry</h2>
-          <p className="mt-1 text-sm text-neutral-500">
-            Record a balanced transaction using debit and credit lines.
-          </p>
+        <section className="overflow-hidden rounded-xl border border-[#E2E1D8] bg-[#FBFAF7]">
+          <div className="border-b border-[#E8E7DF] px-5 py-5 sm:px-6">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#829987]">
+              New transaction
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-[#263D3C]">
+              Create journal entry
+            </h2>
+            <p className="mt-1 text-sm text-[#78847C]">
+              Record a balanced transaction using debit and credit lines.
+            </p>
+          </div>
 
-          <form onSubmit={handleCreateEntry} className="mt-5 space-y-5">
-            <div className="grid gap-4 md:grid-cols-2">
+          <form onSubmit={handleCreateEntry} className="space-y-6 p-5 sm:p-6">
+            <div className="grid gap-5 md:grid-cols-2">
               <div className="space-y-1.5">
                 <label
-                  className="text-sm font-medium"
+                  className="text-xs font-medium text-[#52645A]"
                   htmlFor="entry-description"
                 >
                   Description
@@ -305,7 +379,7 @@ export function AccountingManager({
 
               <div className="space-y-1.5">
                 <label
-                  className="text-sm font-medium"
+                  className="text-xs font-medium text-[#52645A]"
                   htmlFor="entry-reference"
                 >
                   Reference (optional)
@@ -319,7 +393,10 @@ export function AccountingManager({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-sm font-medium" htmlFor="entry-date">
+                <label
+                  className="text-xs font-medium text-[#52645A]"
+                  htmlFor="entry-date"
+                >
                   Entry date
                 </label>
                 <Input
@@ -332,7 +409,10 @@ export function AccountingManager({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-sm font-medium" htmlFor="entry-branch">
+                <label
+                  className="text-xs font-medium text-[#52645A]"
+                  htmlFor="entry-branch"
+                >
                   Branch
                 </label>
                 <Select
@@ -350,9 +430,18 @@ export function AccountingManager({
               </div>
             </div>
 
-            <div>
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="font-medium">Journal lines</h3>
+            {/* Journal lines */}
+            <div className="border-t border-[#E8E7DF] pt-5">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-[#263D3C]">
+                    Journal lines
+                  </h3>
+                  <p className="mt-1 text-xs text-[#8A948B]">
+                    Select accounts and enter the debit and credit amounts.
+                  </p>
+                </div>
+
                 <Button type="button" variant="outline" onClick={addLine}>
                   Add line
                 </Button>
@@ -362,10 +451,10 @@ export function AccountingManager({
                 {lines.map((line, index) => (
                   <div
                     key={index}
-                    className="grid gap-3 rounded-md border p-3 md:grid-cols-[2fr_1.2fr_1fr_1fr_auto]"
+                    className="grid gap-4 rounded-xl border border-[#E4E5DC] bg-[#F6F6F1] p-4 md:grid-cols-[2fr_1.2fr_1fr_1fr_auto]"
                   >
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-neutral-500">
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-medium text-[#78847C]">
                         Account
                       </label>
                       <Select
@@ -384,8 +473,8 @@ export function AccountingManager({
                       </Select>
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-neutral-500">
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-medium text-[#78847C]">
                         Description
                       </label>
                       <Input
@@ -397,8 +486,8 @@ export function AccountingManager({
                       />
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-neutral-500">
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-medium text-[#78847C]">
                         Debit ({currency})
                       </label>
                       <Input
@@ -412,8 +501,8 @@ export function AccountingManager({
                       />
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-neutral-500">
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-medium text-[#78847C]">
                         Credit ({currency})
                       </label>
                       <Input
@@ -441,85 +530,140 @@ export function AccountingManager({
                 ))}
               </div>
 
-              <div className="mt-4 grid gap-2 rounded-md bg-neutral-50 p-4 text-sm sm:grid-cols-2">
-                <p>
-                  Total debit:{" "}
-                  <strong>{formatMoney(totalDebit, currency)}</strong>
-                </p>
-                <p>
-                  Total credit:{" "}
-                  <strong>{formatMoney(totalCredit, currency)}</strong>
-                </p>
-                <p className="sm:col-span-2">
-                  Difference:{" "}
-                  <strong>
+              {/* Debit and credit totals */}
+              <div className="mt-5 grid gap-3 rounded-xl border border-[#DDE3D8] bg-[#EFF1EA] p-4 sm:grid-cols-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[#78847C]">
+                    Total debit
+                  </p>
+                  <p className="mt-1 text-base font-semibold tabular-nums text-[#263D3C]">
+                    {formatMoney(totalDebit, currency)}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[#78847C]">
+                    Total credit
+                  </p>
+                  <p className="mt-1 text-base font-semibold tabular-nums text-[#263D3C]">
+                    {formatMoney(totalCredit, currency)}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[#78847C]">
+                    Difference
+                  </p>
+                  <p className="mt-1 text-base font-semibold tabular-nums text-[#263D3C]">
                     {formatMoney(Math.abs(totalDebit - totalCredit), currency)}
-                  </strong>
-                </p>
+                  </p>
+                </div>
               </div>
             </div>
 
-            <Button
-              type="submit"
-              disabled={
-                isPending ||
-                lines.length < 2 ||
-                totalDebit <= 0 ||
-                Math.abs(totalDebit - totalCredit) > 0.001
-              }
-            >
-              {isPending ? "Saving..." : "Save as draft"}
-            </Button>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#E8E7DF] pt-5">
+              <p className="text-xs text-[#8A948B]">
+                Debits and credits must balance before saving.
+              </p>
+
+              <Button
+                type="submit"
+                disabled={
+                  isPending ||
+                  lines.length < 2 ||
+                  totalDebit <= 0 ||
+                  Math.abs(totalDebit - totalCredit) > 0.001
+                }
+              >
+                {isPending ? "Saving..." : "Save as draft"}
+              </Button>
+            </div>
           </form>
         </section>
       )}
 
-      <div className="flex gap-2 border-b">
-        <button
-          type="button"
-          onClick={() => setActiveTab("entries")}
-          className={`border-b-2 px-4 py-2 text-sm ${
-            activeTab === "entries"
-              ? "border-black font-semibold"
-              : "border-transparent text-neutral-500"
-          }`}
-        >
-          Journal entries
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("accounts")}
-          className={`border-b-2 px-4 py-2 text-sm ${
-            activeTab === "accounts"
-              ? "border-black font-semibold"
-              : "border-transparent text-neutral-500"
-          }`}
-        >
-          Chart of accounts
-        </button>
-      </div>
+      {/* Tabs */}
+      <section className="space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E2E1D8]">
+          <div className="flex gap-6">
+            <button
+              type="button"
+              onClick={() => setActiveTab("entries")}
+              className={`relative pb-3 text-sm transition-colors ${
+                activeTab === "entries"
+                  ? "font-semibold text-[#263D3C] after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-full after:bg-[#829987]"
+                  : "text-[#849087] hover:text-[#263D3C]"
+              }`}
+            >
+              Journal entries
+              <span className="ml-2 rounded-md bg-[#EFF0E9] px-2 py-0.5 text-[10px] text-[#617C68]">
+                {entryList.length}
+              </span>
+            </button>
 
-      {activeTab === "entries" && (
-        <section className="space-y-3">
-          {entryList.length === 0 ? (
-            <div className="rounded-lg border p-8 text-center text-sm text-neutral-500">
-              No journal entries yet.
+            <button
+              type="button"
+              onClick={() => setActiveTab("accounts")}
+              className={`relative pb-3 text-sm transition-colors ${
+                activeTab === "accounts"
+                  ? "font-semibold text-[#263D3C] after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-full after:bg-[#829987]"
+                  : "text-[#849087] hover:text-[#263D3C]"
+              }`}
+            >
+              Chart of accounts
+              <span className="ml-2 rounded-md bg-[#EFF0E9] px-2 py-0.5 text-[10px] text-[#617C68]">
+                {accountList.length}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Journal entries */}
+        {activeTab === "entries" && (
+          <section className="space-y-4">
+            <div>
+              <h2 className="text-base font-semibold text-[#263D3C]">
+                Journal entries
+              </h2>
+              <p className="mt-1 text-xs text-[#8A948B]">
+                Review your recorded transactions and their debit and credit
+                details.
+              </p>
             </div>
-          ) : (
-            entryList.map((entry) => (
-              <div key={entry.id} className="rounded-lg border p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold">{entry.entryNumber}</p>
-                    <p className="mt-1 text-sm">{entry.description}</p>
-                    <p className="mt-1 text-xs text-neutral-500">
-                      {formatDate(entry.entryDate)} · {entry.branchName}
-                      {entry.reference ? ` · Ref: ${entry.reference}` : ""}
-                    </p>
-                  </div>
 
-                  <div className="flex items-center gap-3">
-                    <Badge>{entry.status}</Badge>
+            {entryList.length === 0 ? (
+              <div className="rounded-xl border border-[#E2E1D8] bg-[#FBFAF7] p-10 text-center">
+                <p className="text-sm font-medium text-[#52645A]">
+                  No journal entries yet
+                </p>
+                <p className="mt-1 text-xs text-[#8A948B]">
+                  Your recorded journal entries will appear here.
+                </p>
+              </div>
+            ) : (
+              entryList.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="overflow-hidden rounded-xl border border-[#E2E1D8] bg-[#FBFAF7]"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-4 p-5">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-[#263D3C]">
+                          {entry.entryNumber}
+                        </p>
+                        <Badge>{entry.status}</Badge>
+                      </div>
+
+                      <p className="mt-2 text-sm font-medium text-[#3C5148]">
+                        {entry.description}
+                      </p>
+
+                      <p className="mt-2 text-xs text-[#849087]">
+                        {formatDate(entry.entryDate)} · {entry.branchName}
+                        {entry.reference ? ` · Ref: ${entry.reference}` : ""}
+                      </p>
+                    </div>
 
                     {canManage && entry.status === "DRAFT" && (
                       <Button
@@ -532,162 +676,227 @@ export function AccountingManager({
                       </Button>
                     )}
                   </div>
-                </div>
 
-                <div className="mt-4 overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="border-b text-xs text-neutral-500">
-                      <tr>
-                        <th className="py-2 pr-3">Account</th>
-                        <th className="py-2 pr-3">Description</th>
-                        <th className="py-2 pr-3 text-right">Debit</th>
-                        <th className="py-2 text-right">Credit</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {entry.lines.map((line) => (
-                        <tr key={line.id} className="border-b last:border-0">
-                          <td className="py-2 pr-3">
-                            {line.accountCode} - {line.accountName}
-                          </td>
-                          <td className="py-2 pr-3 text-neutral-500">
-                            {line.description || "—"}
-                          </td>
-                          <td className="py-2 pr-3 text-right tabular-nums">
-                            {formatMoney(Number(line.debit), currency)}
-                          </td>
-                          <td className="py-2 text-right tabular-nums">
-                            {formatMoney(Number(line.credit), currency)}
-                          </td>
+                  <div className="overflow-x-auto border-t border-[#EAE9E2]">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-[#F1F1EB] text-[10px] font-semibold uppercase tracking-wider text-[#78847C]">
+                        <tr>
+                          <th className="px-5 py-3">Account</th>
+                          <th className="px-5 py-3">Description</th>
+                          <th className="px-5 py-3 text-right">Debit</th>
+                          <th className="px-5 py-3 text-right">Credit</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+
+                      <tbody>
+                        {entry.lines.map((line) => (
+                          <tr
+                            key={line.id}
+                            className="border-t border-[#ECEBE4] text-[#52645A]"
+                          >
+                            <td className="px-5 py-3 font-medium text-[#354A40]">
+                              {line.accountCode} - {line.accountName}
+                            </td>
+
+                            <td className="px-5 py-3 text-xs text-[#849087]">
+                              {line.description || "—"}
+                            </td>
+
+                            <td className="px-5 py-3 text-right tabular-nums">
+                              {formatMoney(Number(line.debit), currency)}
+                            </td>
+
+                            <td className="px-5 py-3 text-right tabular-nums">
+                              {formatMoney(Number(line.credit), currency)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            ))
-          )}
-        </section>
-      )}
+              ))
+            )}
+          </section>
+        )}
 
-      {activeTab === "accounts" && (
-        <section className="space-y-5">
-          {canManage && (
-            <form
-              onSubmit={handleCreateAccount}
-              className="grid gap-3 rounded-lg border p-4 md:grid-cols-2"
-            >
-              <h2 className="font-semibold md:col-span-2">
-                Add ledger account
+        {/* Chart of accounts */}
+        {activeTab === "accounts" && (
+          <section className="space-y-5">
+            <div>
+              <h2 className="text-base font-semibold text-[#263D3C]">
+                Chart of accounts
               </h2>
+              <p className="mt-1 text-xs text-[#8A948B]">
+                Manage the accounts used to organise your business finances.
+              </p>
+            </div>
 
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium" htmlFor="account-code">
-                  Account code
-                </label>
-                <Input
-                  id="account-code"
-                  value={accountCode}
-                  onChange={(event) => setAccountCode(event.target.value)}
-                  placeholder="e.g. 6500"
-                  required
-                />
+            {canManage && (
+              <form
+                onSubmit={handleCreateAccount}
+                className="rounded-xl border border-[#E2E1D8] bg-[#FBFAF7] p-5 sm:p-6"
+              >
+                <div className="mb-5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#829987]">
+                    Account setup
+                  </p>
+                  <h3 className="mt-1 text-base font-semibold text-[#263D3C]">
+                    Add ledger account
+                  </h3>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label
+                      className="text-xs font-medium text-[#52645A]"
+                      htmlFor="account-code"
+                    >
+                      Account code
+                    </label>
+                    <Input
+                      id="account-code"
+                      value={accountCode}
+                      onChange={(event) => setAccountCode(event.target.value)}
+                      placeholder="e.g. 6500"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label
+                      className="text-xs font-medium text-[#52645A]"
+                      htmlFor="account-name"
+                    >
+                      Account name
+                    </label>
+                    <Input
+                      id="account-name"
+                      value={accountName}
+                      onChange={(event) => setAccountName(event.target.value)}
+                      placeholder="e.g. Cleaning"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label
+                      className="text-xs font-medium text-[#52645A]"
+                      htmlFor="account-type"
+                    >
+                      Account type
+                    </label>
+                    <Select
+                      id="account-type"
+                      value={accountType}
+                      onChange={(event) => setAccountType(event.target.value)}
+                    >
+                      {ACCOUNT_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {TYPE_LABELS[type]}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label
+                      className="text-xs font-medium text-[#52645A]"
+                      htmlFor="account-description"
+                    >
+                      Description (optional)
+                    </label>
+                    <Input
+                      id="account-description"
+                      value={accountDescription}
+                      onChange={(event) =>
+                        setAccountDescription(event.target.value)
+                      }
+                      placeholder="Account details"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <Button type="submit" disabled={isPending}>
+                      {isPending ? "Saving..." : "Create account"}
+                    </Button>
+                  </div>
+                </div>
+              </form>
+            )}
+
+            {/* Accounts table */}
+            <div className="overflow-hidden rounded-xl border border-[#E2E1D8] bg-[#FBFAF7]">
+              <div className="border-b border-[#E8E7DF] px-5 py-4">
+                <h3 className="text-sm font-semibold text-[#263D3C]">
+                  All ledger accounts
+                </h3>
+                <p className="mt-1 text-xs text-[#8A948B]">
+                  {accountList.length} accounts registered
+                </p>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium" htmlFor="account-name">
-                  Account name
-                </label>
-                <Input
-                  id="account-name"
-                  value={accountName}
-                  onChange={(event) => setAccountName(event.target.value)}
-                  placeholder="e.g. Cleaning"
-                  required
-                />
-              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-[#F1F1EB] text-[10px] font-semibold uppercase tracking-wider text-[#78847C]">
+                    <tr>
+                      <th className="px-5 py-3">Code</th>
+                      <th className="px-5 py-3">Account name</th>
+                      <th className="px-5 py-3">Type</th>
+                      <th className="px-5 py-3">Status</th>
+                      <th className="px-5 py-3">Category</th>
+                    </tr>
+                  </thead>
 
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium" htmlFor="account-type">
-                  Account type
-                </label>
-                <Select
-                  id="account-type"
-                  value={accountType}
-                  onChange={(event) => setAccountType(event.target.value)}
-                >
-                  {ACCOUNT_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {TYPE_LABELS[type]}
-                    </option>
-                  ))}
-                </Select>
-              </div>
+                  <tbody>
+                    {accountList.map((account) => (
+                      <tr
+                        key={account.id}
+                        className="border-t border-[#ECEBE4] text-[#52645A] transition-colors hover:bg-[#F7F7F2]"
+                      >
+                        <td className="whitespace-nowrap px-5 py-4 font-medium text-[#354A40]">
+                          {account.code}
+                        </td>
 
-              <div className="space-y-1.5">
-                <label
-                  className="text-sm font-medium"
-                  htmlFor="account-description"
-                >
-                  Description (optional)
-                </label>
-                <Input
-                  id="account-description"
-                  value={accountDescription}
-                  onChange={(event) =>
-                    setAccountDescription(event.target.value)
-                  }
-                  placeholder="Account details"
-                />
-              </div>
+                        <td className="px-5 py-4">
+                          <p className="font-medium text-[#354A40]">
+                            {account.name}
+                          </p>
+                          {account.description && (
+                            <p className="mt-1 text-xs text-[#8A948B]">
+                              {account.description}
+                            </p>
+                          )}
+                        </td>
 
-              <div className="md:col-span-2">
-                <Button type="submit" disabled={isPending}>
-                  {isPending ? "Saving..." : "Create account"}
-                </Button>
-              </div>
-            </form>
-          )}
+                        <td className="px-5 py-4">
+                          {TYPE_LABELS[account.type] ?? account.type}
+                        </td>
 
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b bg-neutral-50 text-xs text-neutral-500">
-                <tr>
-                  <th className="px-4 py-3">Code</th>
-                  <th className="px-4 py-3">Account name</th>
-                  <th className="px-4 py-3">Type</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Category</th>
-                </tr>
-              </thead>
-              <tbody>
-                {accountList.map((account) => (
-                  <tr key={account.id} className="border-b last:border-0">
-                    <td className="px-4 py-3 font-medium">{account.code}</td>
-                    <td className="px-4 py-3">
-                      <div>{account.name}</div>
-                      {account.description && (
-                        <p className="mt-1 text-xs text-neutral-500">
-                          {account.description}
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {TYPE_LABELS[account.type] ?? account.type}
-                    </td>
-                    <td className="px-4 py-3">
-                      {account.isActive ? "Active" : "Inactive"}
-                    </td>
-                    <td className="px-4 py-3">
-                      {account.isSystem ? "System" : "Custom"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+                        <td className="px-5 py-4">
+                          <span
+                            className={`inline-flex rounded-md px-2.5 py-1 text-[10px] font-medium ${
+                              account.isActive
+                                ? "bg-[#E6EFE5] text-[#4C7455]"
+                                : "bg-[#F0EEEA] text-[#8A8175]"
+                            }`}
+                          >
+                            {account.isActive ? "Active" : "Inactive"}
+                          </span>
+                        </td>
+
+                        <td className="px-5 py-4 text-xs text-[#849087]">
+                          {account.isSystem ? "System" : "Custom"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        )}
+      </section>
     </div>
   );
 }

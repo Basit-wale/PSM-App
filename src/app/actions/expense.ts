@@ -21,6 +21,7 @@ async function getExpenseContext() {
     select: {
       id: true,
       organizationId: true,
+      role: true,
     },
   });
 
@@ -29,11 +30,16 @@ async function getExpenseContext() {
   return {
     memberId: member.id,
     organizationId: member.organizationId,
+    role: member.role,
   };
 }
 
 type ActionResult =
   { success: true; message: string } | { success: false; error: string };
+
+function isAuthorizedFinancialRole(role: string) {
+  return role === "OWNER" || role === "ACCOUNTANT";
+}
 
 function safeError(error: unknown): string {
   if (error instanceof Error) {
@@ -47,9 +53,13 @@ function safeError(error: unknown): string {
       CATEGORY_NOT_AVAILABLE: "The selected expense category is unavailable.",
       EXPENSE_NOT_FOUND: "The expense could not be found.",
       INVALID_EXPENSE_STATUS: "This expense cannot be moved to that status.",
+      CANNOT_REVIEW_OWN_EXPENSE:
+        "You cannot approve or reject an expense you submitted.",
+      INVALID_EXPENSE_DECISION: "Invalid expense review decision.",
     };
 
     if (messages[error.message]) return messages[error.message];
+
     if (error.message.includes("Unique constraint")) {
       return "An expense category with this name already exists.";
     }
@@ -133,6 +143,10 @@ export async function createExpenseCategory(
   try {
     const member = await getExpenseContext();
 
+    if (!isAuthorizedFinancialRole(member.role)) {
+      throw new Error("ACCESS_DENIED");
+    }
+
     await requirePermission(member.organizationId, "accounting:manage");
 
     const cleanName = name.trim();
@@ -171,6 +185,14 @@ export async function reviewExpense(
   try {
     const member = await getExpenseContext();
 
+    if (!isAuthorizedFinancialRole(member.role)) {
+      throw new Error("ACCESS_DENIED");
+    }
+
+    if (decision !== "APPROVED" && decision !== "REJECTED") {
+      throw new Error("INVALID_EXPENSE_DECISION");
+    }
+
     await requirePermission(member.organizationId, "expenses:approve");
 
     const expense = await db.expense.findFirst({
@@ -182,10 +204,15 @@ export async function reviewExpense(
         id: true,
         branchId: true,
         status: true,
+        submittedByMemberId: true,
       },
     });
 
     if (!expense) throw new Error("EXPENSE_NOT_FOUND");
+
+    if (expense.submittedByMemberId === member.memberId) {
+      throw new Error("CANNOT_REVIEW_OWN_EXPENSE");
+    }
 
     await requireBranchPermission(
       member.organizationId,
@@ -202,6 +229,9 @@ export async function reviewExpense(
         id: expense.id,
         organizationId: member.organizationId,
         status: "PENDING",
+        submittedByMemberId: {
+          not: member.memberId,
+        },
       },
       data: {
         status: decision,
@@ -232,6 +262,10 @@ export async function markExpensePaid(
 ): Promise<ActionResult> {
   try {
     const member = await getExpenseContext();
+
+    if (!isAuthorizedFinancialRole(member.role)) {
+      throw new Error("ACCESS_DENIED");
+    }
 
     await requirePermission(member.organizationId, "accounting:manage");
 

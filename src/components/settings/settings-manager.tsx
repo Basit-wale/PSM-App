@@ -44,6 +44,14 @@ const timezones = [
   { value: "UTC", label: "UTC" },
 ];
 
+function SectionIcon({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-[#DFE7DC] bg-[#EDF2EA] text-[#58745E]">
+      {children}
+    </div>
+  );
+}
+
 export function SettingsManager({
   initialSettings,
   canManage,
@@ -86,14 +94,26 @@ export function SettingsManager({
 
   return (
     <div className="settings-page space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      {/* Page heading */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">
-            Business configuration
+          <div className="mb-2 flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#71816F]">
+              Workspace
+            </span>
+            <span className="size-1 rounded-full bg-[#9BAE96]" />
+            <span className="text-[11px] font-medium text-[#8A9386]">
+              Configuration
+            </span>
+          </div>
+
+          <h2 className="text-2xl font-semibold tracking-tight text-[#26392D]">
+            Business settings
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+
+          <p className="mt-1.5 max-w-xl text-sm leading-6 text-[#788276]">
             Manage your organization information and default business
-            preferences.
+            preferences from one place.
           </p>
         </div>
 
@@ -110,31 +130,47 @@ export function SettingsManager({
       </div>
 
       {!canManage && (
-        <div className="rounded-lg border border-[#E1E5DD] bg-[#F0F2ED] px-4 py-3 text-sm text-[#657066]">
-          You can view these settings, but only an organization owner can update
-          them.
+        <div className="flex items-start gap-3 rounded-xl border border-[#E4E8DF] bg-[#F1F3EE] px-4 py-3.5 text-sm text-[#657366]">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            className="mt-0.5 size-5 shrink-0"
+            aria-hidden="true"
+          >
+            <rect x="4" y="10" width="16" height="11" rx="2" />
+            <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+          </svg>
+          <p>
+            You can view these settings, but only an organization owner can
+            update them.
+          </p>
         </div>
       )}
 
-      <section className="settings-section rounded-xl border border-[#E1E5DD] bg-[#FBFAF7] p-5 sm:p-6">
-        <div className="mb-6 flex items-start gap-3">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#E9EEE8] text-[#617968]">
+      {/* Organization details */}
+      <section className="settings-section rounded-2xl border border-[#E2E7DE] bg-[#FBFAF7] p-5 shadow-[0_2px_10px_rgba(38,57,45,0.025)] sm:p-6">
+        <div className="mb-6 flex items-start gap-3.5">
+          <SectionIcon>
             <svg
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
               strokeWidth="1.7"
-              className="size-[18px]"
+              className="size-5"
               aria-hidden="true"
             >
               <path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4" />
               <path d="M9 9v.01M9 13v.01M9 17v.01M15 13v.01M15 17v.01" />
             </svg>
-          </div>
+          </SectionIcon>
 
-          <div>
-            <h3 className="text-base font-semibold">Organization details</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+          <div className="pt-0.5">
+            <h3 className="text-[15px] font-semibold text-[#304536]">
+              Organization details
+            </h3>
+            <p className="mt-1 text-sm leading-5 text-[#81897E]">
               Basic information about your salon business.
             </p>
           </div>
@@ -156,31 +192,47 @@ export function SettingsManager({
           </FormField>
         </div>
 
-        <p className="mt-4 text-xs text-muted-foreground">
-          Your organization slug is a permanent identifier and cannot be changed
-          here.
-        </p>
+        <div className="mt-4 flex items-start gap-2 border-t border-[#EAEBE5] pt-4">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            className="mt-0.5 size-4 shrink-0 text-[#879483]"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 11v5M12 8h.01" />
+          </svg>
+          <p className="text-xs leading-5 text-[#858D81]">
+            Your organization slug is a permanent identifier and cannot be
+            changed here.
+          </p>
+        </div>
       </section>
 
-      <section className="settings-section rounded-xl border border-[#E1E5DD] bg-[#FBFAF7] p-5 sm:p-6">
-        <div className="mb-6 flex items-start gap-3">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#E9EEE8] text-[#617968]">
+      {/* Regional preferences */}
+      <section className="settings-section rounded-2xl border border-[#E2E7DE] bg-[#FBFAF7] p-5 shadow-[0_2px_10px_rgba(38,57,45,0.025)] sm:p-6">
+        <div className="mb-6 flex items-start gap-3.5">
+          <SectionIcon>
             <svg
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
               strokeWidth="1.7"
-              className="size-[18px]"
+              className="size-5"
               aria-hidden="true"
             >
               <circle cx="12" cy="12" r="9" />
               <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
             </svg>
-          </div>
+          </SectionIcon>
 
-          <div>
-            <h3 className="text-base font-semibold">Regional preferences</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+          <div className="pt-0.5">
+            <h3 className="text-[15px] font-semibold text-[#304536]">
+              Regional preferences
+            </h3>
+            <p className="mt-1 text-sm leading-5 text-[#81897E]">
               Choose the currency and time zone used by your business.
             </p>
           </div>
@@ -223,24 +275,27 @@ export function SettingsManager({
         </div>
       </section>
 
-      <section className="settings-section rounded-xl border border-[#E1E5DD] bg-[#FBFAF7] p-5 sm:p-6">
-        <div className="mb-6 flex items-start gap-3">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#E9EEE8] text-[#617968]">
+      {/* Tax settings */}
+      <section className="settings-section rounded-2xl border border-[#E2E7DE] bg-[#FBFAF7] p-5 shadow-[0_2px_10px_rgba(38,57,45,0.025)] sm:p-6">
+        <div className="mb-6 flex items-start gap-3.5">
+          <SectionIcon>
             <svg
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
               strokeWidth="1.7"
-              className="size-[18px]"
+              className="size-5"
               aria-hidden="true"
             >
               <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
             </svg>
-          </div>
+          </SectionIcon>
 
-          <div>
-            <h3 className="text-base font-semibold">Tax settings</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+          <div className="pt-0.5">
+            <h3 className="text-[15px] font-semibold text-[#304536]">
+              Tax settings
+            </h3>
+            <p className="mt-1 text-sm leading-5 text-[#81897E]">
               Configure the default tax percentage applied to POS sales.
             </p>
           </div>
@@ -263,18 +318,30 @@ export function SettingsManager({
             />
           </FormField>
 
-          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+          <p className="mt-2.5 text-xs leading-5 text-[#858D81]">
             Enter 0 if your business does not charge tax. This rate will be used
             to calculate tax on POS sales.
           </p>
         </div>
       </section>
 
+      {/* Feedback */}
       {error && (
         <div
           role="alert"
-          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          className="flex items-start gap-3 rounded-xl border border-[#F0D6D2] bg-[#FFF5F3] px-4 py-3.5 text-sm text-[#A34E43]"
         >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            className="mt-0.5 size-4 shrink-0"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 8v5M12 16h.01" />
+          </svg>
           {error}
         </div>
       )}
@@ -282,15 +349,30 @@ export function SettingsManager({
       {message && (
         <div
           role="status"
-          className="rounded-lg border border-[#D5E3D4] bg-[#EEF4EC] px-4 py-3 text-sm text-[#526D55]"
+          className="flex items-start gap-3 rounded-xl border border-[#D7E4D3] bg-[#EFF5EC] px-4 py-3.5 text-sm text-[#526D55]"
         >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            className="mt-0.5 size-4 shrink-0"
+            aria-hidden="true"
+          >
+            <path d="m5 12 4 4L19 6" />
+          </svg>
           {message}
         </div>
       )}
 
       {canManage && (
-        <div className="flex justify-end border-t border-[#E1E5DD] pt-5">
-          <Button type="button" onClick={handleSave} disabled={isPending}>
+        <div className="flex justify-end border-t border-[#E2E7DE] pt-5">
+          <Button
+            type="button"
+            onClick={handleSave}
+            disabled={isPending}
+            className="min-w-36"
+          >
             {isPending ? "Saving settings..." : "Save changes"}
           </Button>
         </div>

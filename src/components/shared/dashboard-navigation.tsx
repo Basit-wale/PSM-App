@@ -16,6 +16,7 @@ import {
   Building2,
   UserCog,
   Settings,
+  UserRound,
 } from "lucide-react";
 
 const workspaceLinks = [
@@ -26,6 +27,11 @@ const workspaceLinks = [
     icon: CalendarDays,
   },
   { label: "Customers", href: "/dashboard/customers", icon: Users },
+  {
+    label: "Customer Analytics",
+    href: "/dashboard/customer-analytics",
+    icon: UserRound,
+  },
   { label: "Services", href: "/dashboard/services", icon: Scissors },
   { label: "Products", href: "/dashboard/products", icon: Package },
   { label: "Inventory", href: "/dashboard/inventory", icon: Warehouse },
@@ -41,12 +47,18 @@ const administrationLinks = [
   { label: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
+type NavigationLink = {
+  label: string;
+  href: string;
+  icon: React.ElementType;
+};
+
 function NavigationGroup({
   title,
   links,
 }: {
   title: string;
-  links: typeof workspaceLinks;
+  links: NavigationLink[];
 }) {
   const pathname = usePathname();
 
@@ -87,10 +99,18 @@ function NavigationGroup({
   );
 }
 
-export function DashboardNavigation() {
+export function DashboardNavigation({ role }: { role: string }) {
+  const canAccessFinancialModules = role === "OWNER" || role === "ACCOUNTANT";
+
+  const visibleWorkspaceLinks = workspaceLinks.filter(
+    (link) =>
+      canAccessFinancialModules ||
+      !["/dashboard/accounting", "/dashboard/reports"].includes(link.href),
+  );
+
   return (
     <>
-      <NavigationGroup title="Workspace" links={workspaceLinks} />
+      <NavigationGroup title="Workspace" links={visibleWorkspaceLinks} />
       <NavigationGroup title="Administration" links={administrationLinks} />
     </>
   );

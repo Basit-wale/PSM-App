@@ -32,6 +32,7 @@ export default async function ExpensesPage() {
       isActive: true,
     },
     select: {
+      id: true,
       organizationId: true,
     },
   });
@@ -55,6 +56,9 @@ export default async function ExpensesPage() {
 
   const isOrganizationAdmin =
     context.role === MemberRole.OWNER || context.role === MemberRole.ADMIN;
+
+  const isFinancialApprover =
+    context.role === MemberRole.OWNER || context.role === MemberRole.ACCOUNTANT;
 
   const branches = await db.branch.findMany({
     where: isOrganizationAdmin
@@ -126,6 +130,7 @@ export default async function ExpensesPage() {
     expenseDate: expense.expenseDate.toISOString(),
     createdAt: expense.createdAt.toISOString(),
     paidAt: expense.paidAt?.toISOString() ?? null,
+    submittedByMemberId: expense.submittedByMemberId,
   }));
 
   return (
@@ -133,10 +138,17 @@ export default async function ExpensesPage() {
       branches={branches}
       categories={categories}
       expenses={formattedExpenses}
+      currentMemberId={member.id}
       canCreate={hasPermission(context.role, "expenses:create")}
-      canApprove={hasPermission(context.role, "expenses:approve")}
-      canPay={hasPermission(context.role, "accounting:manage")}
-      canManageCategories={hasPermission(context.role, "accounting:manage")}
+      canApprove={
+        isFinancialApprover && hasPermission(context.role, "expenses:approve")
+      }
+      canPay={
+        isFinancialApprover && hasPermission(context.role, "accounting:manage")
+      }
+      canManageCategories={
+        isFinancialApprover && hasPermission(context.role, "accounting:manage")
+      }
     />
   );
 }

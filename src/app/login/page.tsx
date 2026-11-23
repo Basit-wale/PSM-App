@@ -12,6 +12,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -24,6 +25,7 @@ export default function LoginPage() {
       const { error: authError } = await authClient.signIn.email({
         email: email.trim().toLowerCase(),
         password,
+        rememberMe,
       });
 
       if (authError) {
@@ -115,6 +117,16 @@ export default function LoginPage() {
                 </button>
               </div>
             </div>
+
+            <label className="flex cursor-pointer items-center gap-2.5 text-sm text-zinc-600">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(event) => setRememberMe(event.target.checked)}
+                className="h-4 w-4 rounded border-zinc-300 accent-zinc-900"
+              />
+              Keep me logged in
+            </label>
 
             {error && (
               <div

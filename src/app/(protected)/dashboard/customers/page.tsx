@@ -102,6 +102,7 @@ export default async function CustomersPage() {
       customers={customers}
       branches={branches}
       canManageCustomers={hasPermission(membership.role, "customers:manage")}
+      canManageSms={hasPermission(membership.role, "campaigns:manage")}
       organizationWide={isOrganizationWide}
     />
   );

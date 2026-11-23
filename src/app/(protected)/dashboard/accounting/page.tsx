@@ -41,25 +41,31 @@ export default async function AccountingPage() {
     },
     select: {
       organizationId: true,
+      role: true,
     },
   });
 
   if (!member) redirect("/setup");
 
-  let context;
-
-  try {
-    context = await requirePermission(member.organizationId, "accounting:read");
-  } catch {
+  // Only owners and accountants can access Accounting.
+  if (
+    member.role !== MemberRole.OWNER &&
+    member.role !== MemberRole.ACCOUNTANT
+  ) {
     return (
       <div className="p-6">
         <h1 className="text-lg font-semibold">Access denied</h1>
         <p className="mt-2 text-sm text-neutral-600">
-          You do not have permission to view accounting.
+          Only organization owners and accountants can access accounting.
         </p>
       </div>
     );
   }
+
+  const context = await requirePermission(
+    member.organizationId,
+    "accounting:read",
+  );
 
   const isOrganizationAdmin =
     context.role === MemberRole.OWNER || context.role === MemberRole.ADMIN;

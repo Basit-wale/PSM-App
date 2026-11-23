@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { DashboardNavigation } from "@/components/shared/dashboard-navigation";
 import { auth } from "@/lib/auth";
+import { ProfileMenu } from "@/components/shared/profile-menu";
 import { db } from "@/lib/db";
 
 export default async function DashboardLayout({
@@ -74,7 +75,7 @@ export default async function DashboardLayout({
         </div>
 
         <div className="flex-1 overflow-y-auto py-6">
-          <DashboardNavigation />
+          <DashboardNavigation role={membership.role} />
         </div>
 
         <div className="border-t border-[#E5E6DF] px-5 py-4">
@@ -100,9 +101,11 @@ export default async function DashboardLayout({
             </p>
           </div>
 
-          <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-[#858D84]">
-            {membership.role.replaceAll("_", " ")}
-          </p>
+          <ProfileMenu
+            name={session.user.name || "User"}
+            email={session.user.email}
+            role={membership.role}
+          />
         </header>
 
         <main className="min-w-0 flex-1 bg-[#F7F6F1] p-5 md:p-7">

@@ -38,19 +38,126 @@ function StatCard({
   label,
   value,
   description,
+  accent = "sage",
 }: {
   label: string;
   value: string | number;
   description?: string;
+  accent?: "sage" | "forest" | "amber" | "neutral";
 }) {
+  const accentStyles = {
+    sage: "bg-[#e8eee6] text-[#48634d]",
+    forest: "bg-[#e1e9df] text-[#294b35]",
+    amber: "bg-[#f5eddd] text-[#94713a]",
+    neutral: "bg-[#efeee8] text-[#62685e]",
+  };
+
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-5">
-      <p className="text-sm text-zinc-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-zinc-900">{value}</p>
+    <div className="rounded-2xl border border-[#e5e7dc] bg-white p-5 shadow-[0_2px_10px_rgba(43,61,43,0.03)]">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#858b7e]">
+          {label}
+        </p>
+        <span className={`h-2.5 w-2.5 rounded-full ${accentStyles[accent]}`} />
+      </div>
+      <p className="mt-3 break-words text-2xl font-semibold tracking-tight text-[#263d2d]">
+        {value}
+      </p>
       {description && (
-        <p className="mt-1 text-xs text-zinc-500">{description}</p>
+        <p className="mt-2 text-xs leading-5 text-[#858b7e]">{description}</p>
       )}
     </div>
+  );
+}
+
+function Section({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-base font-semibold tracking-tight text-[#294333]">
+          {title}
+        </h2>
+        {description && (
+          <p className="mt-1 text-xs text-[#858b7e]">{description}</p>
+        )}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function ReportTable({
+  title,
+  description,
+  emptyMessage,
+  headers,
+  children,
+  isEmpty,
+}: {
+  title: string;
+  description?: string;
+  emptyMessage: string;
+  headers: string[];
+  children: React.ReactNode;
+  isEmpty: boolean;
+}) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-[#e5e7dc] bg-white shadow-[0_2px_10px_rgba(43,61,43,0.03)]">
+      <div className="border-b border-[#edf0e8] px-5 py-4">
+        <h2 className="text-sm font-semibold text-[#294333]">{title}</h2>
+        {description && (
+          <p className="mt-1 text-xs text-[#858b7e]">{description}</p>
+        )}
+      </div>
+
+      {isEmpty ? (
+        <div className="px-5 py-10 text-center">
+          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#edf1e9] text-[#627b64]">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              className="h-5 w-5"
+            >
+              <path d="M4 5h16M4 10h16M4 15h10M4 20h7" />
+            </svg>
+          </div>
+          <p className="mt-3 text-sm font-medium text-[#536052]">
+            Nothing to show yet
+          </p>
+          <p className="mt-1 text-xs text-[#92978c]">{emptyMessage}</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-[#f7f8f3] text-[10px] font-semibold uppercase tracking-[0.1em] text-[#858b7e]">
+              <tr>
+                {headers.map((header, index) => (
+                  <th
+                    key={header}
+                    className={`whitespace-nowrap px-5 py-3 ${
+                      index > 0 ? "text-right" : ""
+                    }`}
+                  >
+                    {header}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#edf0e8]">{children}</tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -92,13 +199,17 @@ export default async function ReportsPage({
   const branchIds = membership.branches.map((item) => item.branchId);
   const isOrganizationWide = role === "OWNER" || role === "ADMIN";
 
-  if (!hasPermission(role, "reports:read")) {
+  if (role !== "OWNER" && role !== "ACCOUNTANT") {
     return (
-      <main className="p-6">
-        <h1 className="text-2xl font-semibold">Reports</h1>
-        <p className="mt-3 text-sm text-red-600">
-          You do not have permission to view reports.
-        </p>
+      <main className="min-h-screen bg-[#f5f6f0] p-6 md:p-8">
+        <div className="mx-auto max-w-7xl rounded-2xl border border-[#e5e7dc] bg-white p-8">
+          <h1 className="text-xl font-semibold text-[#294333]">
+            Access denied
+          </h1>
+          <p className="mt-3 text-sm text-red-600">
+            Only organization owners and accountants can access reports.
+          </p>
+        </div>
       </main>
     );
   }
@@ -158,11 +269,14 @@ export default async function ReportsPage({
   let paymentCount = 0;
   let expensesPaid = 0;
   let expenseCount = 0;
+
   let appointments: { status: string }[] = [];
+
   let expenseRecords: {
     amount: unknown;
     category: { name: string };
   }[] = [];
+
   let productRecords: {
     description: string;
     quantity: unknown;
@@ -380,29 +494,60 @@ export default async function ReportsPage({
     .slice(0, 10);
 
   const currency = membership.organization.currency || "NGN";
+  const selectedBranchName = branches.find(
+    (item) => item.id === selectedBranch,
+  )?.name;
 
   return (
-    <main className="min-h-screen bg-zinc-50 p-6 md:p-8">
+    <main className="min-h-screen bg-[#f5f6f0] px-4 py-6 md:px-7 md:py-8">
       <div className="mx-auto max-w-7xl space-y-8">
-        <div>
-          <h1 className="text-2xl font-bold text-zinc-900">Reports</h1>
-          <p className="mt-2 text-sm text-zinc-500">
-            Business performance and activity for {membership.organization.name}
-            .
-          </p>
+        {/* Page heading */}
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#82917e]">
+              Business insights
+            </p>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#263d2d] md:text-3xl">
+              Reports
+            </h1>
+            <p className="mt-2 text-sm text-[#858b7e]">
+              Business performance and activity for{" "}
+              <span className="font-medium text-[#536052]">
+                {membership.organization.name}
+              </span>
+            </p>
+          </div>
+
+          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[#dfe6da] bg-[#eaf0e7] px-3 py-2 text-xs font-medium text-[#526c55]">
+            <span className="h-2 w-2 rounded-full bg-[#789477]" />
+            Reporting overview
+          </div>
         </div>
 
-        <section className="rounded-xl border border-zinc-200 bg-white p-5">
-          <h2 className="font-semibold text-zinc-900">Report filters</h2>
+        {/* Filters */}
+        <section className="rounded-2xl border border-[#e5e7dc] bg-white p-5 shadow-[0_2px_10px_rgba(43,61,43,0.03)] md:p-6">
+          <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+            <div>
+              <h2 className="text-sm font-semibold text-[#294333]">
+                Report filters
+              </h2>
+              <p className="mt-1 text-xs text-[#858b7e]">
+                Choose a reporting period and branch
+              </p>
+            </div>
+            <span className="w-fit rounded-full bg-[#f0f2eb] px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#73816e]">
+              Filter data
+            </span>
+          </div>
 
           <form
             method="GET"
-            className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+            className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
           >
             <div>
               <label
                 htmlFor="startDate"
-                className="mb-1 block text-sm font-medium"
+                className="mb-2 block text-xs font-semibold text-[#596657]"
               >
                 Start date
               </label>
@@ -411,14 +556,14 @@ export default async function ReportsPage({
                 name="startDate"
                 type="date"
                 defaultValue={startDate}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                className="h-11 w-full rounded-xl border border-[#dfe4d9] bg-[#fbfcf8] px-3 text-sm text-[#344737] outline-none transition focus:border-[#829b7e] focus:ring-2 focus:ring-[#829b7e]/15"
               />
             </div>
 
             <div>
               <label
                 htmlFor="endDate"
-                className="mb-1 block text-sm font-medium"
+                className="mb-2 block text-xs font-semibold text-[#596657]"
               >
                 End date
               </label>
@@ -427,14 +572,14 @@ export default async function ReportsPage({
                 name="endDate"
                 type="date"
                 defaultValue={endDate}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                className="h-11 w-full rounded-xl border border-[#dfe4d9] bg-[#fbfcf8] px-3 text-sm text-[#344737] outline-none transition focus:border-[#829b7e] focus:ring-2 focus:ring-[#829b7e]/15"
               />
             </div>
 
             <div>
               <label
                 htmlFor="branchId"
-                className="mb-1 block text-sm font-medium"
+                className="mb-2 block text-xs font-semibold text-[#596657]"
               >
                 Branch
               </label>
@@ -442,7 +587,7 @@ export default async function ReportsPage({
                 id="branchId"
                 name="branchId"
                 defaultValue={selectedBranch}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                className="h-11 w-full rounded-xl border border-[#dfe4d9] bg-[#fbfcf8] px-3 text-sm text-[#344737] outline-none transition focus:border-[#829b7e] focus:ring-2 focus:ring-[#829b7e]/15"
               >
                 <option value="">All accessible branches</option>
                 {branches.map((branch) => (
@@ -456,223 +601,241 @@ export default async function ReportsPage({
             <div className="flex items-end">
               <button
                 type="submit"
-                className="w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+                className="h-11 w-full rounded-xl bg-[#365640] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#294632] focus:outline-none focus:ring-2 focus:ring-[#829b7e] focus:ring-offset-2"
               >
                 Apply filters
               </button>
             </div>
           </form>
 
-          <p className="mt-3 text-xs text-zinc-500">
-            Showing {startDate} to {endDate}
-            {selectedBranch
-              ? ` · ${branches.find((item) => item.id === selectedBranch)?.name}`
-              : " · All accessible branches"}
-          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#edf0e8] pt-4 text-xs text-[#858b7e]">
+            <span className="font-semibold text-[#596657]">Period:</span>
+            <span className="rounded-lg bg-[#f3f5ef] px-2.5 py-1.5 font-medium text-[#536052]">
+              {startDate} — {endDate}
+            </span>
+            <span className="text-[#c0c7ba]">·</span>
+            <span>{selectedBranchName || "All accessible branches"}</span>
+          </div>
 
           {!validRange && (
-            <p className="mt-3 text-sm text-red-600">
+            <p className="mt-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
               The end date must not be earlier than the start date.
             </p>
           )}
         </section>
 
+        {/* Sales */}
         {canViewSales && (
-          <section className="space-y-4">
-            <h2 className="text-lg font-semibold text-zinc-900">
-              Sales performance
-            </h2>
+          <Section
+            title="Sales performance"
+            description="Payment activity recorded during the selected period"
+          >
             <div className="grid gap-4 sm:grid-cols-2">
               <StatCard
                 label="Paid revenue"
                 value={formatAmount(revenue, currency)}
                 description="Successful payments received during this period"
+                accent="forest"
               />
               <StatCard
                 label="Completed payments"
                 value={paymentCount}
                 description="Number of successful payment transactions"
+                accent="sage"
               />
             </div>
-          </section>
+          </Section>
         )}
 
+        {/* Expenses */}
         {canViewExpenses && (
-          <section className="space-y-4">
-            <h2 className="text-lg font-semibold text-zinc-900">
-              Expense performance
-            </h2>
+          <Section
+            title="Expense performance"
+            description="Track paid expenses and understand where money is going"
+          >
             <div className="grid gap-4 sm:grid-cols-2">
               <StatCard
                 label="Paid expenses"
                 value={formatAmount(expensesPaid, currency)}
                 description="Expenses paid during this period"
+                accent="amber"
               />
               <StatCard
                 label="Paid expense records"
                 value={expenseCount}
                 description="Number of paid expense records"
+                accent="neutral"
               />
             </div>
 
-            <div className="rounded-xl border border-zinc-200 bg-white p-5">
-              <h3 className="font-semibold text-zinc-900">
-                Expenses by category
-              </h3>
-              {expenseCategories.length === 0 ? (
-                <p className="mt-3 text-sm text-zinc-500">
-                  No paid expenses found for this period.
+            <div className="overflow-hidden rounded-2xl border border-[#e5e7dc] bg-white shadow-[0_2px_10px_rgba(43,61,43,0.03)]">
+              <div className="border-b border-[#edf0e8] px-5 py-4">
+                <h3 className="text-sm font-semibold text-[#294333]">
+                  Expenses by category
+                </h3>
+                <p className="mt-1 text-xs text-[#858b7e]">
+                  Breakdown of paid expenses by category
                 </p>
+              </div>
+
+              {expenseCategories.length === 0 ? (
+                <div className="px-5 py-9 text-center text-sm text-[#858b7e]">
+                  No paid expenses found for this period.
+                </div>
               ) : (
-                <div className="mt-3 divide-y divide-zinc-100">
-                  {expenseCategories.map((item) => (
-                    <div
-                      key={item.name}
-                      className="flex justify-between gap-4 py-3 text-sm"
-                    >
-                      <span className="text-zinc-600">{item.name}</span>
-                      <span className="font-medium text-zinc-900">
-                        {formatAmount(item.amount, currency)}
-                      </span>
-                    </div>
-                  ))}
+                <div className="divide-y divide-[#edf0e8]">
+                  {expenseCategories.map((item) => {
+                    const percentage =
+                      expensesPaid > 0 ? (item.amount / expensesPaid) * 100 : 0;
+
+                    return (
+                      <div key={item.name} className="px-5 py-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <span className="text-sm font-medium text-[#536052]">
+                            {item.name}
+                          </span>
+                          <span className="text-sm font-semibold tabular-nums text-[#294333]">
+                            {formatAmount(item.amount, currency)}
+                          </span>
+                        </div>
+                        <div className="mt-3 flex items-center gap-3">
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#edf0e8]">
+                            <div
+                              className="h-full rounded-full bg-[#829b7e]"
+                              style={{
+                                width: `${Math.min(percentage, 100)}%`,
+                              }}
+                            />
+                          </div>
+                          <span className="w-10 text-right text-[10px] font-medium tabular-nums text-[#858b7e]">
+                            {percentage.toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
-          </section>
+          </Section>
         )}
 
+        {/* Operating overview */}
         {canViewSales && canViewExpenses && (
-          <section className="space-y-4">
-            <h2 className="text-lg font-semibold text-zinc-900">
-              Operating overview
-            </h2>
+          <Section
+            title="Operating overview"
+            description="A simple view of paid revenue less paid expenses"
+          >
             <StatCard
               label="Estimated net operating income"
               value={formatAmount(revenue - expensesPaid, currency)}
               description="Paid revenue minus paid expenses. This is not a full accounting profit calculation."
+              accent="forest"
             />
-          </section>
+          </Section>
         )}
 
+        {/* Appointments */}
         {canViewAppointments && (
-          <section className="space-y-4">
-            <h2 className="text-lg font-semibold text-zinc-900">
-              Appointment performance
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Section
+            title="Appointment performance"
+            description="Appointment activity and status breakdown for this period"
+          >
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               <StatCard
                 label="Total appointments"
                 value={appointmentCounts.total}
+                accent="forest"
               />
-              <StatCard label="Pending" value={appointmentCounts.pending} />
-              <StatCard label="Confirmed" value={appointmentCounts.confirmed} />
+              <StatCard
+                label="Pending"
+                value={appointmentCounts.pending}
+                accent="amber"
+              />
+              <StatCard
+                label="Confirmed"
+                value={appointmentCounts.confirmed}
+                accent="sage"
+              />
               <StatCard
                 label="In progress"
                 value={appointmentCounts.inProgress}
+                accent="neutral"
               />
-              <StatCard label="Completed" value={appointmentCounts.completed} />
-              <StatCard label="Cancelled" value={appointmentCounts.cancelled} />
-              <StatCard label="No shows" value={appointmentCounts.noShow} />
+              <StatCard
+                label="Completed"
+                value={appointmentCounts.completed}
+                accent="forest"
+              />
+              <StatCard
+                label="Cancelled"
+                value={appointmentCounts.cancelled}
+                accent="neutral"
+              />
+              <StatCard
+                label="No shows"
+                value={appointmentCounts.noShow}
+                accent="amber"
+              />
             </div>
-          </section>
+          </Section>
         )}
 
+        {/* Best-selling products */}
         {canViewSales && (
-          <section className="rounded-xl border border-zinc-200 bg-white p-5">
-            <h2 className="font-semibold text-zinc-900">
-              Best-selling products
-            </h2>
-
-            {bestSellingProducts.length === 0 ? (
-              <p className="mt-3 text-sm text-zinc-500">
-                No product sales found for this period.
-              </p>
-            ) : (
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="border-b border-zinc-200 text-zinc-500">
-                    <tr>
-                      <th className="py-3 pr-4 font-medium">Product</th>
-                      <th className="py-3 pr-4 text-right font-medium">
-                        Quantity sold
-                      </th>
-                      <th className="py-3 text-right font-medium">
-                        Sales total
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {bestSellingProducts.map((item) => (
-                      <tr
-                        key={item.name}
-                        className="border-b border-zinc-100 last:border-0"
-                      >
-                        <td className="py-3 pr-4 font-medium text-zinc-900">
-                          {item.name}
-                        </td>
-                        <td className="py-3 pr-4 text-right text-zinc-600">
-                          {item.quantity}
-                        </td>
-                        <td className="py-3 text-right font-medium text-zinc-900">
-                          {formatAmount(item.revenue, currency)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
+          <ReportTable
+            title="Best-selling products"
+            description="Top products ranked by quantity sold"
+            emptyMessage="No product sales found for this period."
+            headers={["Product", "Quantity sold", "Sales total"]}
+            isEmpty={bestSellingProducts.length === 0}
+          >
+            {bestSellingProducts.map((item) => (
+              <tr key={item.name} className="transition hover:bg-[#fafbf7]">
+                <td className="px-5 py-4 font-medium text-[#344737]">
+                  {item.name}
+                </td>
+                <td className="px-5 py-4 text-right tabular-nums text-[#687466]">
+                  {item.quantity}
+                </td>
+                <td className="px-5 py-4 text-right font-semibold tabular-nums text-[#294333]">
+                  {formatAmount(item.revenue, currency)}
+                </td>
+              </tr>
+            ))}
+          </ReportTable>
         )}
 
+        {/* Best-selling services */}
         {canViewSales && (
-          <section className="rounded-xl border border-zinc-200 bg-white p-5">
-            <h2 className="font-semibold text-zinc-900">
-              Best-selling services
-            </h2>
-
-            {bestSellingServices.length === 0 ? (
-              <p className="mt-3 text-sm text-zinc-500">
-                No service sales found for this period.
-              </p>
-            ) : (
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="border-b border-zinc-200 text-zinc-500">
-                    <tr>
-                      <th className="py-3 pr-4 font-medium">Service</th>
-                      <th className="py-3 pr-4 text-right font-medium">
-                        Quantity sold
-                      </th>
-                      <th className="py-3 text-right font-medium">
-                        Sales total
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {bestSellingServices.map((item) => (
-                      <tr
-                        key={item.name}
-                        className="border-b border-zinc-100 last:border-0"
-                      >
-                        <td className="py-3 pr-4 font-medium text-zinc-900">
-                          {item.name}
-                        </td>
-                        <td className="py-3 pr-4 text-right text-zinc-600">
-                          {item.quantity}
-                        </td>
-                        <td className="py-3 text-right font-medium text-zinc-900">
-                          {formatAmount(item.revenue, currency)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
+          <ReportTable
+            title="Best-selling services"
+            description="Top services ranked by quantity sold"
+            emptyMessage="No service sales found for this period."
+            headers={["Service", "Quantity sold", "Sales total"]}
+            isEmpty={bestSellingServices.length === 0}
+          >
+            {bestSellingServices.map((item) => (
+              <tr key={item.name} className="transition hover:bg-[#fafbf7]">
+                <td className="px-5 py-4 font-medium text-[#344737]">
+                  {item.name}
+                </td>
+                <td className="px-5 py-4 text-right tabular-nums text-[#687466]">
+                  {item.quantity}
+                </td>
+                <td className="px-5 py-4 text-right font-semibold tabular-nums text-[#294333]">
+                  {formatAmount(item.revenue, currency)}
+                </td>
+              </tr>
+            ))}
+          </ReportTable>
         )}
+
+        <div className="border-t border-[#e3e7dc] pt-4 text-center">
+          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[#9aa092]">
+            Reports · {membership.organization.name}
+          </p>
+        </div>
       </div>
     </main>
   );

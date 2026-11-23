@@ -835,12 +835,13 @@ export function SalesManager({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[850px] text-left text-[13px]">
+          <table className="w-full min-w-[1050px] text-left text-[13px]">
             <thead className="bg-[#F4F4EE] text-[10px] font-semibold uppercase tracking-[0.07em] text-[#858D83]">
               <tr>
                 <th className="px-4 py-3">Receipt</th>
                 <th className="px-4 py-3">Date</th>
                 <th className="px-4 py-3">Customer</th>
+                <th className="px-4 py-3">Products / Services</th>
                 <th className="px-4 py-3">Branch</th>
                 <th className="px-4 py-3">Payment</th>
                 <th className="px-4 py-3">Status</th>
@@ -873,6 +874,24 @@ export function SalesManager({
                       : "Walk-in"}
                   </td>
 
+                  <td className="px-4 py-3.5">
+                    <div className="space-y-1.5">
+                      {sale.items.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-2 text-xs"
+                        >
+                          <span className="font-medium text-[#414C42]">
+                            {item.description}
+                          </span>
+                          <span className="rounded-md bg-[#E9EEE8] px-2 py-0.5 text-[11px] font-medium text-[#58705B]">
+                            × {Number(item.quantity).toLocaleString("en-NG")}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </td>
+
                   <td className="px-4 py-3.5 text-[#687167]">
                     {sale.branch.name}
                   </td>
@@ -895,7 +914,7 @@ export function SalesManager({
 
               {filteredSales.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-14 text-center">
+                  <td colSpan={8} className="px-4 py-14 text-center">
                     <p className="text-sm font-medium text-[#596458]">
                       No sales found
                     </p>

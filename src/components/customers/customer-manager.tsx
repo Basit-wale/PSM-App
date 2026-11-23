@@ -1,13 +1,24 @@
 "use client";
 
 import { Checkbox } from "@/components/ui/checkbox";
-import { useMemo, useState, useTransition, type FormEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+  type FormEvent,
+} from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  getSmsAudienceCount,
+  sendSmsCampaign,
+  getSmsCampaignHistory,
+} from "@/app/actions/sms";
 import { createCustomer, updateCustomer } from "@/app/actions/customer";
 
 type BranchOption = {
@@ -42,6 +53,7 @@ type CustomerManagerProps = {
   branches: BranchOption[];
   canManageCustomers: boolean;
   organizationWide: boolean;
+  canManageSms: boolean;
 };
 
 type CustomerForm = {
@@ -53,6 +65,19 @@ type CustomerForm = {
   whatsappOptIn: boolean;
   smsOptIn: boolean;
   notes: string;
+};
+
+type SmsCampaignRecord = {
+  id: string;
+  message: string;
+  senderId: string;
+  status: string;
+  recipientCount: number;
+  sentCount: number;
+  deliveredCount: number;
+  failedCount: number;
+  createdAt: Date;
+  branch: { name: string } | null;
 };
 
 const emptyForm: CustomerForm = {
@@ -108,11 +133,12 @@ export function CustomerManager({
   customers,
   branches,
   canManageCustomers,
+  canManageSms,
   organizationWide,
 }: CustomerManagerProps) {
   const router = useRouter();
-  const [showMergeConfirmation, setShowMergeConfirmation] = useState(false);
 
+  const [showMergeConfirmation, setShowMergeConfirmation] = useState(false);
   const [search, setSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState("ALL");
   const [form, setForm] = useState<CustomerForm>(emptyForm);
@@ -134,6 +160,122 @@ export function CustomerManager({
   } | null>(null);
 
   const [isPending, startTransition] = useTransition();
+
+  // SMS broadcast state
+  const [smsBranchId, setSmsBranchId] = useState(
+    organizationWide ? "ALL" : (branches[0]?.id ?? ""),
+  );
+  const [smsMessage, setSmsMessage] = useState("");
+  const [smsRecipientCount, setSmsRecipientCount] = useState<number | null>(
+    null,
+  );
+  const [smsNotice, setSmsNotice] = useState("");
+  const [smsNoticeError, setSmsNoticeError] = useState(false);
+  const [smsPending, startSmsTransition] = useTransition();
+  const [smsCampaigns, setSmsCampaigns] = useState<SmsCampaignRecord[]>([]);
+  const [smsHistoryLoading, setSmsHistoryLoading] = useState(false);
+
+  // Load SMS audience and campaign history
+  useEffect(() => {
+    if (!canManageSms) return;
+
+    let cancelled = false;
+
+    async function loadSmsData() {
+      setSmsHistoryLoading(true);
+
+      try {
+        const [countResult, historyResult] = await Promise.all([
+          getSmsAudienceCount({
+            branchId: smsBranchId === "ALL" ? null : smsBranchId,
+          }),
+          getSmsCampaignHistory(),
+        ]);
+
+        if (cancelled) return;
+
+        setSmsRecipientCount(
+          countResult.success ? countResult.recipientCount : null,
+        );
+
+        if (historyResult.success) {
+          setSmsCampaigns(historyResult.campaigns);
+        }
+      } catch {
+        if (!cancelled) {
+          setSmsRecipientCount(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setSmsHistoryLoading(false);
+        }
+      }
+    }
+
+    loadSmsData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageSms, smsBranchId]);
+
+  function handleSendSms() {
+    if (!smsMessage.trim()) {
+      setSmsNoticeError(true);
+      setSmsNotice("Enter a message before sending.");
+      return;
+    }
+
+    if (!smsRecipientCount) {
+      setSmsNoticeError(true);
+      setSmsNotice("There are no eligible recipients.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Send this SMS to ${smsRecipientCount} opted-in customers?`,
+    );
+
+    if (!confirmed) return;
+
+    startSmsTransition(async () => {
+      setSmsNotice("");
+
+      try {
+        const result = await sendSmsCampaign({
+          branchId: smsBranchId === "ALL" ? null : smsBranchId,
+          message: smsMessage.trim(),
+        });
+
+        if (!result.success) {
+          setSmsNoticeError(true);
+          setSmsNotice(result.error);
+          return;
+        }
+
+        setSmsMessage("");
+        setSmsNoticeError(false);
+        setSmsNotice(
+          `Campaign submitted successfully to ${result.recipientCount} recipients. ${
+            result.sandbox
+              ? "Sandbox test: no real SMS was sent."
+              : "Messages submitted to the SMS provider."
+          }`,
+        );
+
+        const history = await getSmsCampaignHistory();
+
+        if (history.success) {
+          setSmsCampaigns(history.campaigns);
+        }
+
+        router.refresh();
+      } catch {
+        setSmsNoticeError(true);
+        setSmsNotice("Unable to submit the SMS campaign. Please try again.");
+      }
+    });
+  }
 
   const visibleCustomers = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -160,7 +302,7 @@ export function CustomerManager({
   ).length;
 
   const smsCount = visibleCustomers.filter(
-    (customer) => customer.smsOptIn,
+    (customer) => customer.smsOptIn && customer.status === "ACTIVE",
   ).length;
 
   function openCreateForm() {
@@ -353,9 +495,210 @@ export function CustomerManager({
         <SummaryCard
           label="SMS consent"
           value={smsCount}
-          detail="Customers opted in"
+          detail="Active customers opted in"
         />
       </div>
+
+      {canManageSms && (
+        <section className={`${panelClass} overflow-hidden`}>
+          <div className="border-b border-[#E8E9E2] px-4 py-4">
+            <h2 className="text-sm font-semibold text-[#414B42]">
+              SMS broadcasts
+            </h2>
+            <p className="mt-1 text-xs text-[#92978F]">
+              Send messages to active customers who have opted in to receive
+              SMS.
+            </p>
+          </div>
+
+          <div className="space-y-4 p-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField
+                label="Recipient branch"
+                htmlFor="sms-recipient-branch"
+                labelClassName="text-xs font-medium text-[#596359]"
+              >
+                <Select
+                  value={smsBranchId}
+                  id="sms-recipient-branch"
+                  onChange={(event) => {
+                    setSmsBranchId(event.target.value);
+                    setSmsNotice("");
+                  }}
+                  className={fieldClass}
+                  disabled={smsPending}
+                >
+                  {organizationWide && (
+                    <option value="ALL">All branches</option>
+                  )}
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+
+              <div className="rounded-lg border border-[#E3E5DD] bg-[#F5F6F1] px-4 py-3">
+                <p className="text-xs font-medium text-[#777F76]">
+                  Eligible recipients
+                </p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-[#354139]">
+                  {smsHistoryLoading && smsRecipientCount === null
+                    ? "..."
+                    : (smsRecipientCount ?? 0).toLocaleString()}
+                </p>
+                <p className="mt-1 text-[11px] text-[#92978F]">
+                  Active customers with SMS consent and valid phone numbers
+                </p>
+              </div>
+            </div>
+
+            <FormField
+              label="Message"
+              htmlFor="sms-broadcast-message"
+              labelClassName="text-xs font-medium text-[#596359]"
+            >
+              <Textarea
+                value={smsMessage}
+                id="sms-broadcast-message"
+                onChange={(event) => setSmsMessage(event.target.value)}
+                rows={4}
+                maxLength={1530}
+                placeholder="Write your SMS broadcast..."
+                className="w-full resize-y rounded-lg border border-[#DDE1D8] bg-[#FEFDFC] px-3 py-2 text-sm text-[#39443C] outline-none placeholder:text-[#9A9F98] focus:border-[#879B89] focus:ring-2 focus:ring-[#879B89]/15"
+                disabled={smsPending}
+              />
+            </FormField>
+
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+              <p className="text-[11px] text-[#92978F]">
+                {smsMessage.length.toLocaleString()} / 1,530 characters
+              </p>
+
+              <Button
+                type="button"
+                onClick={handleSendSms}
+                disabled={
+                  smsPending ||
+                  !smsMessage.trim() ||
+                  !smsRecipientCount ||
+                  !smsBranchId
+                }
+              >
+                {smsPending ? "Submitting campaign..." : "Send SMS broadcast"}
+              </Button>
+            </div>
+
+            {smsNotice && (
+              <div
+                role="status"
+                className={`rounded-lg border px-3 py-2 text-sm ${
+                  smsNoticeError
+                    ? "border-[#E8C7C3] bg-[#FAEFED] text-[#984F49]"
+                    : "border-[#D5E2D4] bg-[#EDF3EC] text-[#526D56]"
+                }`}
+              >
+                {smsNotice}
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-[#E8E9E2]">
+            <div className="px-4 py-3">
+              <h3 className="text-xs font-semibold text-[#414B42]">
+                Recent SMS campaigns
+              </h3>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[680px] border-collapse text-left">
+                <thead>
+                  <tr className="border-y border-[#E8E9E2] bg-[#F4F4EF]">
+                    {[
+                      "Message",
+                      "Branch",
+                      "Recipients",
+                      "Sent",
+                      "Failed",
+                      "Status",
+                      "Date",
+                    ].map((heading) => (
+                      <th
+                        key={heading}
+                        className="px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.09em] text-[#7D857B]"
+                      >
+                        {heading}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-[#ECEDE7]">
+                  {smsCampaigns.map((campaign) => (
+                    <tr key={campaign.id}>
+                      <td className="max-w-[240px] px-4 py-3">
+                        <p className="truncate text-xs text-[#465247]">
+                          {campaign.message}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-[#687467]">
+                        {campaign.branch?.name ?? "All branches"}
+                      </td>
+                      <td className="px-4 py-3 text-xs tabular-nums text-[#59635A]">
+                        {campaign.recipientCount.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3 text-xs tabular-nums text-[#59635A]">
+                        {campaign.sentCount.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3 text-xs tabular-nums text-[#59635A]">
+                        {campaign.failedCount.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="rounded-md bg-[#E8EEE7] px-2 py-1 text-[10px] font-medium text-[#526B57]">
+                          {campaign.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-[#858C83]">
+                        {new Date(campaign.createdAt).toLocaleDateString(
+                          "en-NG",
+                          {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          },
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {!smsHistoryLoading && smsCampaigns.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="px-4 py-8 text-center text-xs text-[#92978F]"
+                      >
+                        No SMS campaigns yet.
+                      </td>
+                    </tr>
+                  )}
+
+                  {smsHistoryLoading && smsCampaigns.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="px-4 py-8 text-center text-xs text-[#92978F]"
+                      >
+                        Loading campaign history...
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className={`${panelClass} overflow-hidden`}>
         <div className="flex flex-col gap-3 border-b border-[#E8E9E2] p-4 sm:flex-row sm:items-center sm:justify-between">

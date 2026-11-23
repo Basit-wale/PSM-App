@@ -107,14 +107,14 @@ function formatAmount(value: number) {
   });
 }
 
-function SummaryCard({
+export function SummaryCard({
   label,
   value,
   description,
   accent,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   description: string;
   accent: string;
 }) {

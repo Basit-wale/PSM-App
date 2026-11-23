@@ -68,6 +68,21 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum SmsCampaignStatus {
+  DRAFT
+  SENDING
+  SENT
+  PARTIAL
+  FAILED
+}
+
+enum SmsRecipientStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+}
+
 enum AppointmentStatus {
   PENDING
   CONFIRMED
@@ -123,7 +138,7 @@ model Organization {
   ledgerAccounts    LedgerAccount[]
   journalEntries    JournalEntry[]
   staffInvitations  StaffInvitation[]
-
+  smsCampaigns SmsCampaign[]
 
 }
 
@@ -151,6 +166,7 @@ model Branch {
 
   staffInvitations StaffInvitationBranch[]
   customers        CustomerBranch[]
+  smsCampaigns SmsCampaign[]
 
   @@unique([organizationId, code])
   @@unique([id, organizationId])
@@ -192,6 +208,7 @@ model OrganizationMember {
   journalEntriesCreated   JournalEntry[]     @relation("JournalEntryCreatedBy")
   auditLogs               AuditLog[]         @relation("AuditLogActor")
   staffInvitationsCreated StaffInvitation[]  @relation("StaffInvitationCreator")
+  createdSmsCampaigns SmsCampaign[] @relation("SmsCampaignCreator")
 
   @@unique([organizationId, userId])
   @@unique([id, organizationId])
@@ -231,6 +248,7 @@ model Customer {
   sales        Sale[]
   appointments Appointment[]
   branches     CustomerBranch[]
+  smsRecipients SmsRecipient[]
 
   @@unique([organizationId, phone])
   @@unique([id, organizationId])
@@ -677,4 +695,53 @@ model CustomerBranch {
   @@unique([customerId, branchId])
   @@index([organizationId, branchId])
   @@index([organizationId, customerId])
+}
+
+model SmsCampaign {
+  id                String            @id @default(uuid()) @db.Uuid
+  organizationId    String            @db.Uuid
+  branchId          String?           @db.Uuid
+  createdByMemberId String            @db.Uuid
+  message           String
+  senderId          String
+  providerMessageId String?
+  status            SmsCampaignStatus @default(DRAFT)
+  recipientCount    Int               @default(0)
+  sentCount         Int               @default(0)
+  deliveredCount    Int               @default(0)
+  failedCount       Int               @default(0)
+  createdAt         DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @db.Timestamptz(3)
+
+  organization Organization       @relation(fields: [organizationId], references: [id])
+  branch       Branch?            @relation(fields: [branchId, organizationId], references: [id, organizationId])
+  createdBy    OrganizationMember @relation("SmsCampaignCreator", fields: [createdByMemberId, organizationId], references: [id, organizationId])
+  recipients   SmsRecipient[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId, createdAt])
+  @@index([branchId, createdAt])
+  @@index([createdByMemberId])
+}
+
+model SmsRecipient {
+  id                String             @id @default(uuid()) @db.Uuid
+  organizationId    String             @db.Uuid
+  campaignId        String             @db.Uuid
+  customerId        String?            @db.Uuid
+  phone             String
+  status            SmsRecipientStatus @default(PENDING)
+  providerMessageId String?
+  errorMessage      String?
+  sentAt            DateTime?          @db.Timestamptz(3)
+  deliveredAt       DateTime?          @db.Timestamptz(3)
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
+
+  campaign SmsCampaign @relation(fields: [campaignId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  customer Customer?   @relation(fields: [customerId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@unique([campaignId, phone])
+  @@index([organizationId, campaignId, status])
+  @@index([customerId])
 }
