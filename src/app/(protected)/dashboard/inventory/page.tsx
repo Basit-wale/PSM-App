@@ -117,11 +117,7 @@ export default async function InventoryPage() {
       branches={branches}
       products={products}
       balances={formattedBalances}
-      canManageInventory={
-        context.role !== MemberRole.ACCOUNTANT &&
-        context.role !== MemberRole.CRM_MANAGER &&
-        context.role !== MemberRole.RECEPTIONIST
-      }
+      canManageInventory={context.role === MemberRole.OWNER}
     />
   );
 }

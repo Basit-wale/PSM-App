@@ -115,14 +115,14 @@ enum JournalEntryStatus {
 }
 
 model Organization {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  slug      String   @unique
-  currency  String   @default("NGN")
-  timezone  String   @default("Africa/Lagos")
-  defaultTaxRate Decimal @default(0) @db.Decimal(5, 2)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String
+  slug           String   @unique
+  currency       String   @default("NGN")
+  timezone       String   @default("Africa/Lagos")
+  defaultTaxRate Decimal  @default(0) @db.Decimal(5, 2)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
 
   branches          Branch[]
   members           OrganizationMember[]
@@ -138,8 +138,9 @@ model Organization {
   ledgerAccounts    LedgerAccount[]
   journalEntries    JournalEntry[]
   staffInvitations  StaffInvitation[]
-  smsCampaigns SmsCampaign[]
-
+  smsCampaigns      SmsCampaign[]
+  manualBranches    ManualBranch[]
+  branchStaff       BranchStaff[]
 }
 
 model Branch {
@@ -166,7 +167,8 @@ model Branch {
 
   staffInvitations StaffInvitationBranch[]
   customers        CustomerBranch[]
-  smsCampaigns SmsCampaign[]
+  smsCampaigns     SmsCampaign[]
+  branchStaff      BranchStaff[]
 
   @@unique([organizationId, code])
   @@unique([id, organizationId])
@@ -197,18 +199,19 @@ model OrganizationMember {
   isActive       Boolean    @default(true)
   createdAt      DateTime   @default(now()) @db.Timestamptz(3)
 
-  organization            Organization       @relation(fields: [organizationId], references: [id])
-  user                    User               @relation(fields: [userId], references: [id])
-  branches                BranchMembership[]
-  salesCreated            Sale[]
-  saleItemsAssigned       SaleItem[] @relation("SaleItemAssignedMember")
-  appointmentsAssigned    Appointment[]
-  expensesSubmitted       Expense[]          @relation("ExpenseSubmittedBy")
-  expensesApproved        Expense[]          @relation("ExpenseApprovedBy")
-  journalEntriesCreated   JournalEntry[]     @relation("JournalEntryCreatedBy")
-  auditLogs               AuditLog[]         @relation("AuditLogActor")
-  staffInvitationsCreated StaffInvitation[]  @relation("StaffInvitationCreator")
-  createdSmsCampaigns SmsCampaign[] @relation("SmsCampaignCreator")
+  organization             Organization       @relation(fields: [organizationId], references: [id])
+  user                     User               @relation(fields: [userId], references: [id])
+  branches                 BranchMembership[]
+  salesCreated             Sale[]
+  saleItemsAssigned        SaleItem[]         @relation("SaleItemAssignedMember")
+  saleItemsPriceNegotiated SaleItem[]         @relation("SaleItemPriceNegotiatedBy")
+  appointmentsAssigned     Appointment[]
+  expensesSubmitted        Expense[]          @relation("ExpenseSubmittedBy")
+  expensesApproved         Expense[]          @relation("ExpenseApprovedBy")
+  journalEntriesCreated    JournalEntry[]     @relation("JournalEntryCreatedBy")
+  auditLogs                AuditLog[]         @relation("AuditLogActor")
+  staffInvitationsCreated  StaffInvitation[]  @relation("StaffInvitationCreator")
+  createdSmsCampaigns      SmsCampaign[]      @relation("SmsCampaignCreator")
 
   @@unique([organizationId, userId])
   @@unique([id, organizationId])
@@ -229,6 +232,24 @@ model BranchMembership {
   @@index([organizationId, memberId])
 }
 
+model BranchStaff {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  branchId       String   @db.Uuid
+  name           String
+  phone          String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  branch       Branch       @relation(fields: [branchId, organizationId], references: [id, organizationId])
+  saleItems    SaleItem[]   @relation("SaleItemAssignedBranchStaff")
+
+  @@unique([id, organizationId])
+  @@index([organizationId, branchId, isActive])
+}
+
 model Customer {
   id             String         @id @default(uuid()) @db.Uuid
   organizationId String         @db.Uuid
@@ -244,10 +265,10 @@ model Customer {
   createdAt      DateTime       @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime       @updatedAt @db.Timestamptz(3)
 
-  organization Organization     @relation(fields: [organizationId], references: [id])
-  sales        Sale[]
-  appointments Appointment[]
-  branches     CustomerBranch[]
+  organization  Organization     @relation(fields: [organizationId], references: [id])
+  sales         Sale[]
+  appointments  Appointment[]
+  branches      CustomerBranch[]
   smsRecipients SmsRecipient[]
 
   @@unique([organizationId, phone])
@@ -255,7 +276,6 @@ model Customer {
   @@index([organizationId, firstName, lastName])
   @@index([organizationId, email])
 }
-
 
 model ServiceCategory {
   id             String   @id @default(uuid()) @db.Uuid
@@ -286,8 +306,8 @@ model Service {
   createdAt      DateTime @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @db.Timestamptz(3)
 
-  organization     Organization     @relation(fields: [organizationId], references: [id])
-  category         ServiceCategory  @relation(fields: [categoryId, organizationId], references: [id, organizationId])
+  organization     Organization         @relation(fields: [organizationId], references: [id])
+  category         ServiceCategory      @relation(fields: [categoryId, organizationId], references: [id, organizationId])
   saleItems        SaleItem[]
   appointmentItems AppointmentService[]
 
@@ -296,7 +316,6 @@ model Service {
   @@index([organizationId, isActive])
   @@index([organizationId, categoryId])
 }
-
 
 model Product {
   id             String        @id @default(uuid()) @db.Uuid
@@ -382,29 +401,38 @@ model Sale {
 }
 
 model SaleItem {
-  id                 String   @id @default(uuid()) @db.Uuid
-  organizationId     String   @db.Uuid
-  saleId             String   @db.Uuid
-  productId          String?  @db.Uuid
-  serviceId          String?  @db.Uuid
-  assignedMemberId   String?  @db.Uuid
-  assignedMemberName String?
-  stockBefore        Decimal? @db.Decimal(12, 3)
-  stockAfter         Decimal? @db.Decimal(12, 3)
-  description        String
-  quantity           Decimal  @db.Decimal(12, 3)
-  unitPrice          Decimal  @db.Decimal(12, 2)
-  total              Decimal  @db.Decimal(12, 2)
+  id                        String       @id @default(uuid()) @db.Uuid
+  organizationId            String       @db.Uuid
+  saleId                    String       @db.Uuid
+  productId                 String?      @db.Uuid
+  serviceId                 String?      @db.Uuid
+  assignedMemberId          String?      @db.Uuid
+  assignedMemberName        String?
+  assignedBranchStaff       BranchStaff? @relation("SaleItemAssignedBranchStaff", fields: [assignedBranchStaffId, organizationId], references: [id, organizationId])
+  stockBefore               Decimal?     @db.Decimal(12, 3)
+  stockAfter                Decimal?     @db.Decimal(12, 3)
+  description               String
+  quantity                  Decimal      @db.Decimal(12, 3)
+  unitPrice                 Decimal      @db.Decimal(12, 2)
+  total                     Decimal      @db.Decimal(12, 2)
+  originalUnitPrice         Decimal?     @db.Decimal(12, 2)
+  priceDifference           Decimal?     @db.Decimal(12, 2)
+  priceNegotiatedByMemberId String?      @db.Uuid
+  priceNegotiatedAt         DateTime?    @db.Timestamptz(3)
+  assignedBranchStaffId     String?      @db.Uuid
 
-  sale    Sale     @relation(fields: [saleId, organizationId], references: [id, organizationId])
-  product Product? @relation(fields: [productId, organizationId], references: [id, organizationId])
-  service Service? @relation(fields: [serviceId, organizationId], references: [id, organizationId])
-  assignedMember OrganizationMember? @relation("SaleItemAssignedMember", fields: [assignedMemberId, organizationId], references: [id, organizationId])
+  sale              Sale                @relation(fields: [saleId, organizationId], references: [id, organizationId])
+  product           Product?            @relation(fields: [productId, organizationId], references: [id, organizationId])
+  service           Service?            @relation(fields: [serviceId, organizationId], references: [id, organizationId])
+  assignedMember    OrganizationMember? @relation("SaleItemAssignedMember", fields: [assignedMemberId, organizationId], references: [id, organizationId])
+  priceNegotiatedBy OrganizationMember? @relation("SaleItemPriceNegotiatedBy", fields: [priceNegotiatedByMemberId, organizationId], references: [id, organizationId])
 
   @@index([organizationId, saleId])
   @@index([organizationId, productId])
   @@index([organizationId, serviceId])
   @@index([organizationId, assignedMemberId])
+  @@index([organizationId, priceNegotiatedByMemberId])
+  @@index([organizationId, assignedBranchStaffId])
 }
 
 model Payment {
@@ -744,4 +772,59 @@ model SmsRecipient {
   @@unique([campaignId, phone])
   @@index([organizationId, campaignId, status])
   @@index([customerId])
+}
+
+model ManualBranch {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  name           String
+  phone          String?
+  address        String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization             @relation(fields: [organizationId], references: [id])
+  staff        ManualStaff[]
+  entries      ManualPerformanceEntry[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId, isActive])
+}
+
+model ManualStaff {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  branchId       String   @db.Uuid
+  name           String
+  phone          String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  branch  ManualBranch             @relation(fields: [branchId, organizationId], references: [id, organizationId])
+  entries ManualPerformanceEntry[]
+
+  @@unique([id, branchId, organizationId])
+  @@index([organizationId, branchId, isActive])
+}
+
+model ManualPerformanceEntry {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @db.Uuid
+  branchId        String   @db.Uuid
+  staffId         String   @db.Uuid
+  workDate        DateTime @db.Date
+  revenue         Decimal  @db.Decimal(12, 2)
+  notes           String?
+  createdByUserId String   @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  branch ManualBranch @relation(fields: [branchId, organizationId], references: [id, organizationId])
+  staff  ManualStaff  @relation(fields: [staffId, branchId, organizationId], references: [id, branchId, organizationId])
+
+  @@unique([staffId, workDate])
+  @@index([organizationId, workDate])
+  @@index([organizationId, branchId, workDate])
 }

@@ -85,7 +85,7 @@ export default async function StaffPage() {
         },
       };
 
-  const [branches, members, invitations] = await Promise.all([
+  const [branches, members, invitations, branchStaff] = await Promise.all([
     db.branch.findMany({
       where: {
         organizationId: membership.organizationId,
@@ -147,6 +147,22 @@ export default async function StaffPage() {
         },
       },
     }),
+
+    db.branchStaff.findMany({
+      where: {
+        organizationId: membership.organizationId,
+        ...(canManageStaff ? {} : { branchId: { in: context.branchIds } }),
+      },
+      orderBy: [{ branch: { name: "asc" } }, { name: "asc" }],
+      include: {
+        branch: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    }),
   ]);
 
   return (
@@ -171,6 +187,14 @@ export default async function StaffPage() {
       currentMemberId={context.memberId}
       canManageStaff={canManageStaff}
       canInviteAdmin={canInviteAdmin}
+      branchStaff={branchStaff.map((person) => ({
+        id: person.id,
+        name: person.name,
+        phone: person.phone,
+        isActive: person.isActive,
+        branchId: person.branchId,
+        branchName: person.branch.name,
+      }))}
     />
   );
 }

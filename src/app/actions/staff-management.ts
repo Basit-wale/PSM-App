@@ -50,6 +50,10 @@ function failure(error: unknown): Result {
       INVALID_BRANCH: "One or more selected branches are invalid or inactive.",
       INVITATION_NOT_FOUND: "Pending invitation not found.",
       CANNOT_ASSIGN_OWNER: "The owner role cannot be assigned.",
+      BRANCH_STAFF_NOT_FOUND: "Regular branch staff member not found.",
+      MANAGER_ONLY: "Only the owner or admin can manage regular branch staff.",
+      INVALID_STAFF_DETAILS:
+        "Enter a valid staff name, phone number, and branch.",
     };
 
     if (messages[error.message]) {
@@ -256,6 +260,95 @@ export async function revokeStaffInvitation(
 
     if (result.count === 0) {
       throw new Error("INVITATION_NOT_FOUND");
+    }
+
+    return { success: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function createBranchStaff(
+  name: string,
+  phone: string,
+  branchId: string,
+): Promise<Result> {
+  try {
+    const manager = await getManager();
+
+    if (
+      manager.role !== MemberRole.OWNER &&
+      manager.role !== MemberRole.ADMIN
+    ) {
+      throw new Error("MANAGER_ONLY");
+    }
+
+    const cleanName = name.trim();
+    const cleanPhone = phone.trim();
+
+    if (
+      cleanName.length < 2 ||
+      cleanName.length > 100 ||
+      cleanPhone.length > 30 ||
+      !/^[0-9a-f-]{36}$/i.test(branchId)
+    ) {
+      throw new Error("INVALID_STAFF_DETAILS");
+    }
+
+    const branch = await db.branch.findFirst({
+      where: {
+        id: branchId,
+        organizationId: manager.organizationId,
+        status: "ACTIVE",
+      },
+      select: { id: true },
+    });
+
+    if (!branch) throw new Error("INVALID_STAFF_DETAILS");
+
+    await db.branchStaff.create({
+      data: {
+        organizationId: manager.organizationId,
+        branchId: branch.id,
+        name: cleanName,
+        phone: cleanPhone || null,
+      },
+    });
+
+    return { success: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function setBranchStaffStatus(
+  staffId: string,
+  isActive: boolean,
+): Promise<Result> {
+  try {
+    const manager = await getManager();
+
+    if (
+      manager.role !== MemberRole.OWNER &&
+      manager.role !== MemberRole.ADMIN
+    ) {
+      throw new Error("MANAGER_ONLY");
+    }
+
+    if (!/^[0-9a-f-]{36}$/i.test(staffId) || typeof isActive !== "boolean") {
+      throw new Error("BRANCH_STAFF_NOT_FOUND");
+    }
+
+    const result = await db.branchStaff.updateMany({
+      where: {
+        id: staffId,
+        organizationId: manager.organizationId,
+      },
+      data: { isActive },
+    });
+
+    if (result.count === 0) {
+      throw new Error("BRANCH_STAFF_NOT_FOUND");
     }
 
     return { success: true };

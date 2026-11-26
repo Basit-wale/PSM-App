@@ -169,7 +169,10 @@ export function InventoryManager({
     >();
 
     for (const row of filteredActivity) {
-      const key = row.staffId ?? row.staffName;
+      // Only services count toward individual staff performance.
+      if (row.type !== "SERVICE" || !row.staffId) continue;
+
+      const key = row.staffId;
 
       const current = staffMap.get(key) ?? {
         staffId: key,
@@ -184,20 +187,15 @@ export function InventoryManager({
       const amount = Number(row.amount);
       const itemQuantity = Number(row.quantity);
 
-      if (row.type === "SERVICE") {
-        current.services += itemQuantity;
-        current.serviceRevenue += amount;
-      } else {
-        current.products += itemQuantity;
-        current.productRevenue += amount;
-      }
-
+      current.services += itemQuantity;
+      current.serviceRevenue += amount;
       current.totalRevenue += amount;
+
       staffMap.set(key, current);
     }
 
     return [...staffMap.values()].sort(
-      (a, b) => b.totalRevenue - a.totalRevenue,
+      (a, b) => b.serviceRevenue - a.serviceRevenue,
     );
   }, [filteredActivity]);
 
@@ -283,7 +281,10 @@ export function InventoryManager({
     >();
 
     for (const row of reportRows) {
-      const key = row.staffId ?? row.staffName;
+      // Exclude products and unassigned services.
+      if (row.type !== "SERVICE" || !row.staffId) continue;
+
+      const key = row.staffId;
 
       const person = staffMap.get(key) ?? {
         name: row.staffName,
@@ -293,12 +294,7 @@ export function InventoryManager({
       };
 
       person.revenue += Number(row.amount);
-
-      if (row.type === "SERVICE") {
-        person.services += Number(row.quantity);
-      } else {
-        person.products += Number(row.quantity);
-      }
+      person.services += Number(row.quantity);
 
       staffMap.set(key, person);
     }
@@ -361,7 +357,10 @@ export function InventoryManager({
     >();
 
     for (const row of branchComparisonRows) {
-      const key = row.staffId ?? row.staffName;
+      // Only assigned services count toward staff performance.
+      if (row.type !== "SERVICE" || !row.staffId) continue;
+
+      const key = row.staffId;
 
       const current = staffMap.get(key) ?? {
         id: key,
@@ -372,12 +371,7 @@ export function InventoryManager({
       };
 
       current.revenue += Number(row.amount);
-
-      if (row.type === "SERVICE") {
-        current.services += Number(row.quantity);
-      } else {
-        current.products += Number(row.quantity);
-      }
+      current.services += Number(row.quantity);
 
       staffMap.set(key, current);
     }
@@ -389,7 +383,7 @@ export function InventoryManager({
     const options = new Map<string, string>();
 
     for (const row of activityRows) {
-      if (row.staffId) {
+      if (row.type === "SERVICE" && row.staffId) {
         options.set(row.staffId, row.staffName);
       }
     }

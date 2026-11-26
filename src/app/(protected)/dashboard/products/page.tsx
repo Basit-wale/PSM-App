@@ -68,12 +68,7 @@ export default async function ProductsPage() {
   return (
     <ProductManager
       products={formattedProducts}
-      canManageProducts={
-        member.role === "OWNER" ||
-        member.role === "ADMIN" ||
-        member.role === "BRANCH_MANAGER" ||
-        member.role === "INVENTORY_MANAGER"
-      }
+      canManageProducts={member.role === "OWNER"}
     />
   );
 }

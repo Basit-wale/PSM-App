@@ -13,6 +13,8 @@ import {
   updateStaffRole,
   setStaffStatus,
   revokeStaffInvitation,
+  createBranchStaff,
+  setBranchStaffStatus,
 } from "@/app/actions/staff-management";
 
 type Branch = {
@@ -42,6 +44,15 @@ type StaffMember = {
   branchIds: string[];
 };
 
+type BranchStaffMember = {
+  id: string;
+  name: string;
+  phone: string | null;
+  isActive: boolean;
+  branchId: string;
+  branchName: string;
+};
+
 type Invitation = {
   id: string;
   email: string;
@@ -54,6 +65,7 @@ type StaffManagerProps = {
   branches: Branch[];
   members: StaffMember[];
   invitations: Invitation[];
+  branchStaff: BranchStaffMember[];
   currentMemberId: string;
   canManageStaff: boolean;
   canInviteAdmin: boolean;
@@ -97,6 +109,7 @@ export function StaffManager({
   branches,
   members,
   invitations,
+  branchStaff,
   currentMemberId,
   canManageStaff,
   canInviteAdmin,
@@ -109,6 +122,11 @@ export function StaffManager({
   const [error, setError] = useState("");
   const [invitationUrl, setInvitationUrl] = useState("");
   const [copied, setCopied] = useState(false);
+  const [branchStaffName, setBranchStaffName] = useState("");
+  const [branchStaffPhone, setBranchStaffPhone] = useState("");
+  const [branchStaffBranchId, setBranchStaffBranchId] = useState("");
+  const [branchStaffError, setBranchStaffError] = useState("");
+  const [branchStaffSuccess, setBranchStaffSuccess] = useState("");
 
   const [editingMember, setEditingMember] = useState<StaffMember | null>(null);
   const [editRole, setEditRole] = useState<AssignableRole>("BRANCH_MANAGER");
@@ -220,6 +238,50 @@ export function StaffManager({
       }
 
       setConfirmation(null);
+      router.refresh();
+    });
+  }
+
+  function handleBranchStaffSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBranchStaffError("");
+    setBranchStaffSuccess("");
+
+    startTransition(async () => {
+      const result = await createBranchStaff(
+        branchStaffName.trim(),
+        branchStaffPhone.trim(),
+        branchStaffBranchId,
+      );
+
+      if (!result.success) {
+        setBranchStaffError(result.error);
+        return;
+      }
+
+      setBranchStaffName("");
+      setBranchStaffPhone("");
+      setBranchStaffBranchId("");
+      setBranchStaffSuccess("Regular staff member added successfully.");
+      router.refresh();
+    });
+  }
+
+  function toggleBranchStaffStatus(person: BranchStaffMember) {
+    setBranchStaffError("");
+    setBranchStaffSuccess("");
+
+    startTransition(async () => {
+      const result = await setBranchStaffStatus(person.id, !person.isActive);
+
+      if (!result.success) {
+        setBranchStaffError(result.error);
+        return;
+      }
+
+      setBranchStaffSuccess(
+        `${person.name} has been ${person.isActive ? "deactivated" : "reactivated"}.`,
+      );
       router.refresh();
     });
   }
@@ -537,6 +599,216 @@ export function StaffManager({
           </div>
         </section>
       )}
+
+      {/* Regular branch staff - no login required */}
+      <section>
+        <div className="mb-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#91a08e]">
+            Service team
+          </p>
+          <h2 className="mt-1 text-lg font-semibold text-[#294638]">
+            Regular Branch Staff
+          </h2>
+          <p className="mt-1 text-xs text-[#929d91]">
+            Manage salon workers who do not need system login accounts. They can
+            be assigned to services in POS.
+          </p>
+        </div>
+
+        <div className={sectionClass}>
+          {canManageStaff && (
+            <div className="border-b border-[#edf0e9] p-5 sm:p-6">
+              <h3 className="text-sm font-semibold text-[#385442]">
+                Add regular staff member
+              </h3>
+              <p className="mt-1 text-xs text-[#929d91]">
+                Create a staff profile and assign it to a branch.
+              </p>
+
+              <form
+                onSubmit={handleBranchStaffSubmit}
+                className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+              >
+                <FormField label="Staff name" htmlFor="branch-staff-name">
+                  <Input
+                    id="branch-staff-name"
+                    value={branchStaffName}
+                    onChange={(event) => setBranchStaffName(event.target.value)}
+                    placeholder="Enter full name"
+                    required
+                    minLength={2}
+                    maxLength={100}
+                    className={inputClass}
+                  />
+                </FormField>
+
+                <FormField
+                  label="Phone number (optional)"
+                  htmlFor="branch-staff-phone"
+                >
+                  <Input
+                    id="branch-staff-phone"
+                    value={branchStaffPhone}
+                    onChange={(event) =>
+                      setBranchStaffPhone(event.target.value)
+                    }
+                    placeholder="Phone number"
+                    maxLength={30}
+                    className={inputClass}
+                  />
+                </FormField>
+
+                <FormField label="Branch" htmlFor="branch-staff-branch">
+                  <Select
+                    id="branch-staff-branch"
+                    value={branchStaffBranchId}
+                    onChange={(event) =>
+                      setBranchStaffBranchId(event.target.value)
+                    }
+                    className={inputClass}
+                    required
+                  >
+                    <option value="">Select branch</option>
+                    {branches.map((branch) => (
+                      <option key={branch.id} value={branch.id}>
+                        {branch.name}
+                      </option>
+                    ))}
+                  </Select>
+                </FormField>
+
+                <div className="flex items-end">
+                  <Button
+                    type="submit"
+                    disabled={isPending || branches.length === 0}
+                    className="w-full"
+                  >
+                    {isPending ? "Adding..." : "Add staff member"}
+                  </Button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {(branchStaffError || branchStaffSuccess) && (
+            <div className="px-5 pt-4 sm:px-6">
+              {branchStaffError && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                >
+                  {branchStaffError}
+                </div>
+              )}
+
+              {branchStaffSuccess && (
+                <div
+                  role="status"
+                  className="rounded-xl border border-[#dce8d9] bg-[#f3f7f1] px-4 py-3 text-sm text-[#547456]"
+                >
+                  {branchStaffSuccess}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[650px] text-left text-sm">
+              <thead className={tableHeaderClass}>
+                <tr>
+                  <th className="px-5 py-4 font-semibold">Staff member</th>
+                  <th className="px-5 py-4 font-semibold">Phone</th>
+                  <th className="px-5 py-4 font-semibold">Branch</th>
+                  <th className="px-5 py-4 font-semibold">Status</th>
+                  {canManageStaff && (
+                    <th className="px-5 py-4 font-semibold">Actions</th>
+                  )}
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-[#edf0e9]">
+                {branchStaff.map((person) => (
+                  <tr
+                    key={person.id}
+                    className="transition-colors hover:bg-[#fafbf8]"
+                  >
+                    <td className={cellClass}>
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#edf2e9] text-xs font-semibold text-[#66806a]">
+                          {person.name
+                            .split(" ")
+                            .map((part) => part[0])
+                            .slice(0, 2)
+                            .join("")
+                            .toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-[#385442]">
+                            {person.name}
+                          </p>
+                          <p className="mt-0.5 text-[10px] text-[#929d91]">
+                            No login account
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className={`${cellClass} text-xs text-[#748375]`}>
+                      {person.phone || "—"}
+                    </td>
+
+                    <td className={`${cellClass} text-xs text-[#748375]`}>
+                      {person.branchName}
+                    </td>
+
+                    <td className={cellClass}>
+                      <Badge>{person.isActive ? "ACTIVE" : "INACTIVE"}</Badge>
+                    </td>
+
+                    {canManageStaff && (
+                      <td className={cellClass}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={isPending}
+                          onClick={() => toggleBranchStaffStatus(person)}
+                        >
+                          {person.isActive ? "Deactivate" : "Reactivate"}
+                        </Button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+
+                {branchStaff.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={canManageStaff ? 5 : 4}
+                      className="px-5 py-12 text-center"
+                    >
+                      <p className="text-sm font-medium text-[#526b57]">
+                        No regular branch staff yet
+                      </p>
+                      <p className="mt-1 text-xs text-[#9aa497]">
+                        Add staff members who work at your salon without needing
+                        login accounts.
+                      </p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="border-t border-[#edf0e9] bg-[#fafbf8] px-5 py-3">
+            <p className="text-[11px] text-[#929d91]">
+              {branchStaff.length} regular{" "}
+              {branchStaff.length === 1 ? "staff member" : "staff members"}
+            </p>
+          </div>
+        </div>
+      </section>
 
       {/* Current staff */}
       <section>

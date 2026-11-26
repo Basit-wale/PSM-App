@@ -3,7 +3,7 @@ import { cn } from "cn";
 
 type FormFieldProps = {
   label: string;
-  htmlFor: string;
+  htmlFor?: string;
   required?: boolean;
   error?: string;
   description?: string;

@@ -22,11 +22,18 @@ async function getProductContext() {
       userId: session.user.id,
       isActive: true,
     },
-    select: { organizationId: true },
+    select: {
+      organizationId: true,
+      role: true,
+    },
   });
 
   if (!member) {
     throw new Error("No active organization found.");
+  }
+
+  if (member.role !== "OWNER") {
+    throw new Error("You do not have permission to manage products.");
   }
 
   await requirePermission(member.organizationId, "products:manage");

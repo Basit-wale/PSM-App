@@ -36,6 +36,7 @@ async function getSaleContext() {
     select: {
       id: true,
       organizationId: true,
+      role: true,
     },
   });
 
@@ -66,6 +67,8 @@ function getSafeErrorMessage(error: unknown): string {
         "There is insufficient stock for one or more products.",
       INVALID_DISCOUNT: "Discount cannot exceed the subtotal.",
       INVALID_TOTAL: "The sale total must be greater than zero.",
+      PRICE_NEGOTIATION_NOT_ALLOWED:
+        "You do not have permission to negotiate POS prices.",
     };
 
     if (messages[error.message]) {
@@ -92,6 +95,18 @@ export async function createSale(input: unknown): Promise<ActionResult> {
     const member = await getSaleContext();
     const data = parsed.data;
 
+    const canNegotiatePrices =
+      member.role === "OWNER" ||
+      member.role === "ADMIN" ||
+      member.role === "BRANCH_MANAGER";
+
+    if (
+      !canNegotiatePrices &&
+      data.items.some((item) => item.negotiatedPrice !== undefined)
+    ) {
+      throw new Error("PRICE_NEGOTIATION_NOT_ALLOWED");
+    }
+
     await requireBranchPermission(
       member.organizationId,
       data.branchId,
@@ -109,8 +124,12 @@ export async function createSale(input: unknown): Promise<ActionResult> {
     const items = data.items.map((item) => ({
       type: item.type,
       itemId: item.itemId,
-      assignedMemberId: item.assignedMemberId,
+      assignedMemberId: item.assignedMemberId ?? null,
+      assignedBranchStaffId: item.assignedBranchStaffId ?? null,
       quantity: new Prisma.Decimal(item.quantity),
+      negotiatedPrice: item.negotiatedPrice
+        ? new Prisma.Decimal(item.negotiatedPrice)
+        : undefined,
     }));
 
     const discount = new Prisma.Decimal(data.discount || "0");
@@ -173,13 +192,27 @@ export async function createSale(input: unknown): Promise<ActionResult> {
               .map((item) => item.itemId),
           ),
         ];
+        // Get unique staff IDs from SERVICE items only.
+        // Products must never be attributed to staff.
+        const serviceItems = items.filter((item) => item.type === "SERVICE");
 
-        // Get unique assigned staff IDs.
         const staffIds = [
-          ...new Set(items.map((item) => item.assignedMemberId)),
+          ...new Set(
+            serviceItems
+              .map((item) => item.assignedMemberId)
+              .filter((id): id is string => Boolean(id)),
+          ),
         ];
 
-        const [products, services, staff] = await Promise.all([
+        const branchStaffIds = [
+          ...new Set(
+            serviceItems
+              .map((item) => item.assignedBranchStaffId)
+              .filter((id): id is string => Boolean(id)),
+          ),
+        ];
+
+        const [products, services, staff, regularStaff] = await Promise.all([
           tx.product.findMany({
             where: {
               id: { in: productIds },
@@ -222,11 +255,20 @@ export async function createSale(input: unknown): Promise<ActionResult> {
             },
             select: {
               id: true,
-              user: {
-                select: {
-                  name: true,
-                },
-              },
+              userId: true,
+            },
+          }),
+
+          tx.branchStaff.findMany({
+            where: {
+              id: { in: branchStaffIds },
+              organizationId: member.organizationId,
+              branchId: data.branchId,
+              isActive: true,
+            },
+            select: {
+              id: true,
+              name: true,
             },
           }),
         ]);
@@ -239,9 +281,23 @@ export async function createSale(input: unknown): Promise<ActionResult> {
           throw new Error("SERVICE_NOT_AVAILABLE");
         }
 
-        if (staff.length !== staffIds.length) {
+        if (
+          staff.length !== staffIds.length ||
+          regularStaff.length !== branchStaffIds.length
+        ) {
           throw new Error("STAFF_NOT_AVAILABLE");
         }
+
+        // Get the names of login-based staff.
+        const staffUsers = await tx.user.findMany({
+          where: {
+            id: { in: staff.map((person) => person.userId) },
+          },
+          select: {
+            id: true,
+            name: true,
+          },
+        });
 
         const productMap = new Map(
           products.map((product) => [product.id, product]),
@@ -253,8 +309,15 @@ export async function createSale(input: unknown): Promise<ActionResult> {
 
         const staffMap = new Map(staff.map((person) => [person.id, person]));
 
-        // Prepare individual sale lines with server-verified
-        // staff names and current product/service prices.
+        const staffUserMap = new Map(
+          staffUsers.map((person) => [person.id, person]),
+        );
+
+        const regularStaffMap = new Map(
+          regularStaff.map((person) => [person.id, person]),
+        );
+
+        // Prepare individual sale lines using server-verified prices.
         const saleItems = items.map((item) => {
           const product =
             item.type === "PRODUCT" ? productMap.get(item.itemId) : undefined;
@@ -262,28 +325,87 @@ export async function createSale(input: unknown): Promise<ActionResult> {
           const service =
             item.type === "SERVICE" ? serviceMap.get(item.itemId) : undefined;
 
-          const assignedMember = staffMap.get(item.assignedMemberId);
+          const assignedMember = item.assignedMemberId
+            ? staffMap.get(item.assignedMemberId)
+            : undefined;
+
+          const assignedBranchStaff = item.assignedBranchStaffId
+            ? regularStaffMap.get(item.assignedBranchStaffId)
+            : undefined;
 
           const name = product?.name ?? service?.name;
 
-          if (!name || !assignedMember) {
+          if (!name) {
+            throw new Error(
+              item.type === "PRODUCT"
+                ? "PRODUCT_NOT_AVAILABLE"
+                : "SERVICE_NOT_AVAILABLE",
+            );
+          }
+
+          // Only services require staff assignment.
+          if (
+            item.type === "SERVICE" &&
+            !assignedMember &&
+            !assignedBranchStaff
+          ) {
             throw new Error("STAFF_NOT_AVAILABLE");
           }
 
-          const unitPrice = new Prisma.Decimal(
+          const assignedUser = assignedMember
+            ? staffUserMap.get(assignedMember.userId)
+            : undefined;
+
+          const assignedMemberName =
+            item.type === "SERVICE"
+              ? (assignedUser?.name ??
+                assignedBranchStaff?.name ??
+                "Staff member")
+              : null;
+
+          // Always retrieve the original price from the database.
+          const originalUnitPrice = new Prisma.Decimal(
             product?.sellingPrice ?? service?.price ?? 0,
           );
+
+          // Use the negotiated price when supplied.
+          const unitPrice = item.negotiatedPrice ?? originalUnitPrice;
+
+          if (!unitPrice.greaterThan(0)) {
+            throw new Error("INVALID_TOTAL");
+          }
+
+          // Positive difference means a discount from the original price.
+          const priceDifference = originalUnitPrice
+            .minus(unitPrice)
+            .toDecimalPlaces(2);
+
+          const isNegotiated = !priceDifference.isZero();
 
           const lineTotal = unitPrice.mul(item.quantity).toDecimalPlaces(2);
 
           return {
             productId: product?.id ?? null,
             serviceId: service?.id ?? null,
-            assignedMemberId: assignedMember.id,
-            assignedMemberName: assignedMember.user.name ?? "Staff member",
+
+            // Products are never assigned to staff.
+            assignedMemberId:
+              item.type === "SERVICE" ? (assignedMember?.id ?? null) : null,
+
+            assignedBranchStaffId:
+              item.type === "SERVICE"
+                ? (assignedBranchStaff?.id ?? null)
+                : null,
+
+            assignedMemberName,
+
             description: name,
             quantity: item.quantity,
             unitPrice,
+            originalUnitPrice,
+            priceDifference,
+            priceNegotiatedByMemberId: isNegotiated ? member.id : null,
+            priceNegotiatedAt: isNegotiated ? new Date() : null,
             total: lineTotal,
             stockBefore: null as Prisma.Decimal | null,
             stockAfter: null as Prisma.Decimal | null,
@@ -311,6 +433,16 @@ export async function createSale(input: unknown): Promise<ActionResult> {
 
         if (!total.greaterThan(0)) {
           throw new Error("INVALID_TOTAL");
+        }
+
+        // Validate that all payment allocations equal the full sale total.
+        const paymentTotal = data.payments.reduce(
+          (sum, payment) => sum.plus(new Prisma.Decimal(payment.amount)),
+          new Prisma.Decimal(0),
+        );
+
+        if (!paymentTotal.equals(total)) {
+          throw new Error("PAYMENT_TOTAL_MISMATCH");
         }
 
         // Create the sale.
@@ -408,26 +540,31 @@ export async function createSale(input: unknown): Promise<ActionResult> {
             productId: item.productId,
             serviceId: item.serviceId,
             assignedMemberId: item.assignedMemberId,
+            assignedBranchStaffId: item.assignedBranchStaffId,
             assignedMemberName: item.assignedMemberName,
             stockBefore: item.stockBefore?.toFixed(3) ?? null,
             stockAfter: item.stockAfter?.toFixed(3) ?? null,
             description: item.description,
             quantity: item.quantity.toString(),
             unitPrice: item.unitPrice.toFixed(2),
+            originalUnitPrice: item.originalUnitPrice.toFixed(2),
+            priceDifference: item.priceDifference.toFixed(2),
+            priceNegotiatedByMemberId: item.priceNegotiatedByMemberId,
+            priceNegotiatedAt: item.priceNegotiatedAt,
             total: item.total.toFixed(2),
           })),
         });
 
-        // Record full payment.
-        await tx.payment.create({
-          data: {
+        // Record each payment allocation separately.
+        await tx.payment.createMany({
+          data: data.payments.map((payment) => ({
             organizationId: member.organizationId,
             saleId: sale.id,
-            amount: total.toFixed(2),
-            method: data.paymentMethod,
-            status: "COMPLETED",
+            amount: new Prisma.Decimal(payment.amount).toFixed(2),
+            method: payment.method,
+            status: "COMPLETED" as const,
             paidAt: new Date(),
-          },
+          })),
         });
 
         // Record who processed the transaction.
@@ -442,7 +579,10 @@ export async function createSale(input: unknown): Promise<ActionResult> {
             metadata: {
               receiptNumber,
               itemCount: saleItems.length,
-              paymentMethod: data.paymentMethod,
+              paymentMethods: data.payments.map((payment) => ({
+                method: payment.method,
+                amount: new Prisma.Decimal(payment.amount).toFixed(2),
+              })),
               total: total.toFixed(2),
             },
           },

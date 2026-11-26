@@ -53,7 +53,7 @@ export default async function SalesPage() {
 
   const branchScope = organizationWide ? {} : { id: { in: assignedBranchIds } };
 
-  const [branches, customers, products, services, sales, staff] =
+  const [branches, customers, products, services, sales, staff, branchStaff] =
     await Promise.all([
       db.branch.findMany({
         where: {
@@ -153,6 +153,19 @@ export default async function SalesPage() {
               quantity: true,
               unitPrice: true,
               total: true,
+              originalUnitPrice: true,
+              priceDifference: true,
+              priceNegotiatedByMemberId: true,
+              priceNegotiatedAt: true,
+              priceNegotiatedBy: {
+                select: {
+                  user: {
+                    select: {
+                      name: true,
+                    },
+                  },
+                },
+              },
             },
           },
           payments: {
@@ -207,6 +220,27 @@ export default async function SalesPage() {
           },
         },
       }),
+
+      db.branchStaff.findMany({
+        where: {
+          organizationId: membership.organizationId,
+          isActive: true,
+          branch: {
+            status: "ACTIVE",
+            ...(organizationWide
+              ? {}
+              : {
+                  id: { in: assignedBranchIds },
+                }),
+          },
+        },
+        orderBy: [{ branch: { name: "asc" } }, { name: "asc" }],
+        select: {
+          id: true,
+          name: true,
+          branchId: true,
+        },
+      }),
     ]);
 
   const branchIds = branches.map((branch) => branch.id);
@@ -253,6 +287,10 @@ export default async function SalesPage() {
       quantity: item.quantity.toString(),
       unitPrice: item.unitPrice.toString(),
       total: item.total.toString(),
+      originalUnitPrice: item.originalUnitPrice?.toString() ?? null,
+      priceDifference: item.priceDifference?.toString() ?? null,
+      priceNegotiatedAt: item.priceNegotiatedAt?.toISOString() ?? null,
+      priceNegotiatedByName: item.priceNegotiatedBy?.user.name ?? null,
     })),
     payments: sale.payments.map((payment) => ({
       ...payment,
@@ -266,6 +304,12 @@ export default async function SalesPage() {
     branchIds: member.branches.map((item) => item.branchId),
   }));
 
+  const formattedBranchStaff = branchStaff.map((person) => ({
+    id: person.id,
+    name: person.name,
+    branchId: person.branchId,
+  }));
+
   return (
     <SalesManager
       branches={branches}
@@ -274,10 +318,16 @@ export default async function SalesPage() {
       services={formattedServices}
       sales={formattedSales}
       staff={formattedStaff}
+      branchStaff={formattedBranchStaff}
       defaultTaxRate={membership.organization.defaultTaxRate.toString()}
       canCreateSales={
         hasPermission(membership.role, "sales:create") &&
         hasPermission(membership.role, "payments:manage")
+      }
+      canNegotiatePrices={
+        membership.role === "OWNER" ||
+        membership.role === "ADMIN" ||
+        membership.role === "BRANCH_MANAGER"
       }
     />
   );

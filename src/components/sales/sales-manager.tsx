@@ -62,6 +62,11 @@ type Sale = {
     quantity: string;
     unitPrice: string;
     total: string;
+    originalUnitPrice: string | null;
+    priceDifference: string | null;
+    priceNegotiatedByMemberId: string | null;
+    priceNegotiatedAt: string | null;
+    priceNegotiatedByName: string | null;
   }[];
   payments: {
     amount: string;
@@ -74,13 +79,26 @@ type CartItem = {
   type: "PRODUCT" | "SERVICE";
   itemId: string;
   quantity: string;
-  assignedMemberId: string;
+  assignedMemberId?: string;
+  assignedBranchStaffId?: string;
+  negotiatedPrice?: string;
+};
+
+type PaymentEntry = {
+  method: "CASH" | "BANK_TRANSFER" | "CARD" | "MOBILE_MONEY" | "OTHER";
+  amount: string;
 };
 
 type Staff = {
   id: string;
   name: string;
   branchIds: string[];
+};
+
+type BranchStaff = {
+  id: string;
+  name: string;
+  branchId: string;
 };
 
 type Props = {
@@ -92,6 +110,8 @@ type Props = {
   staff: Staff[];
   defaultTaxRate: string;
   canCreateSales: boolean;
+  canNegotiatePrices: boolean;
+  branchStaff: BranchStaff[];
 };
 
 function money(value: string | number) {
@@ -140,8 +160,10 @@ export function SalesManager({
   services,
   sales,
   staff,
+  branchStaff,
   defaultTaxRate,
   canCreateSales,
+  canNegotiatePrices,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -153,7 +175,9 @@ export function SalesManager({
   const [quantity, setQuantity] = useState("1");
   const [selectedMemberId, setSelectedMemberId] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState("CASH");
+  const [payments, setPayments] = useState<PaymentEntry[]>([
+    { method: "CASH", amount: "0" },
+  ]);
   const [discount, setDiscount] = useState("0");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
@@ -171,6 +195,11 @@ export function SalesManager({
   const availableStaff = useMemo(
     () => staff.filter((member) => member.branchIds.includes(branchId)),
     [staff, branchId],
+  );
+
+  const availableBranchStaff = useMemo(
+    () => branchStaff.filter((person) => person.branchId === branchId),
+    [branchStaff, branchId],
   );
 
   const availableItems = itemType === "PRODUCT" ? products : services;
@@ -205,22 +234,40 @@ export function SalesManager({
             : undefined;
 
         const name = product?.name ?? service?.name ?? "Unavailable item";
-        const price = Number(product?.sellingPrice ?? service?.price ?? 0);
+
+        const originalPrice = Number(
+          product?.sellingPrice ?? service?.price ?? 0,
+        );
+
+        const price =
+          item.negotiatedPrice?.trim() &&
+          Number.isFinite(Number(item.negotiatedPrice))
+            ? Number(item.negotiatedPrice)
+            : originalPrice;
+
         const lineTotal = price * Number(item.quantity);
 
-        const assignedStaff = staff.find(
-          (member) => member.id === item.assignedMemberId,
-        );
+        const assignedStaff = item.assignedMemberId
+          ? staff.find((member) => member.id === item.assignedMemberId)
+          : undefined;
+
+        const assignedRegularStaff = item.assignedBranchStaffId
+          ? branchStaff.find(
+              (person) => person.id === item.assignedBranchStaffId,
+            )
+          : undefined;
 
         return {
           ...item,
           name,
+          originalPrice,
           price,
           lineTotal,
-          assignedStaffName: assignedStaff?.name ?? "Unavailable",
+          assignedStaffName:
+            assignedStaff?.name ?? assignedRegularStaff?.name ?? "Not assigned",
         };
       }),
-    [cart, products, services, staff],
+    [cart, products, services, staff, branchStaff],
   );
 
   const subtotal = cartDetails.reduce(
@@ -234,6 +281,22 @@ export function SalesManager({
   const taxAmount =
     Math.round(((taxableAmount * taxRate) / 100 + Number.EPSILON) * 100) / 100;
   const total = taxableAmount + taxAmount;
+
+  const allocatedPaymentCents = payments.reduce(
+    (sum, payment) => sum + Math.round((Number(payment.amount) || 0) * 100),
+    0,
+  );
+
+  const totalCents = Math.round(total * 100);
+  const remainingPayment = (totalCents - allocatedPaymentCents) / 100;
+
+  const paymentsAreValid =
+    payments.length > 0 &&
+    payments.every(
+      (payment) =>
+        Number.isFinite(Number(payment.amount)) && Number(payment.amount) > 0,
+    ) &&
+    allocatedPaymentCents === totalCents;
 
   const filteredSales = sales.filter(
     (sale) =>
@@ -258,8 +321,9 @@ export function SalesManager({
       return;
     }
 
-    if (!selectedMemberId) {
-      setError("Select the staff member responsible for this item.");
+    // Only services require staff assignment.
+    if (itemType === "SERVICE" && !selectedMemberId) {
+      setError("Select the staff member responsible for this service.");
       return;
     }
 
@@ -282,18 +346,30 @@ export function SalesManager({
       return;
     }
 
+    const assignedMemberId =
+      itemType === "SERVICE" && selectedMemberId.startsWith("member:")
+        ? selectedMemberId.slice(7)
+        : undefined;
+
+    const assignedBranchStaffId =
+      itemType === "SERVICE" && selectedMemberId.startsWith("branch:")
+        ? selectedMemberId.slice(7)
+        : undefined;
+
     setCart((current) => [
       ...current,
       {
         type: itemType,
         itemId,
         quantity: parsedQuantity.toString(),
-        assignedMemberId: selectedMemberId,
+        ...(assignedMemberId ? { assignedMemberId } : {}),
+        ...(assignedBranchStaffId ? { assignedBranchStaffId } : {}),
       },
     ]);
 
     setItemId("");
     setQuantity("1");
+    setSelectedMemberId("");
   }
 
   function updateQuantity(index: number, value: string) {
@@ -304,8 +380,44 @@ export function SalesManager({
     );
   }
 
+  function updateNegotiatedPrice(index: number, value: string) {
+    setCart((current) =>
+      current.map((item, itemIndex) =>
+        itemIndex === index
+          ? { ...item, negotiatedPrice: value.trim() || undefined }
+          : item,
+      ),
+    );
+  }
+
   function removeItem(index: number) {
     setCart((current) => current.filter((_, i) => i !== index));
+  }
+
+  function updatePayment(
+    index: number,
+    field: keyof PaymentEntry,
+    value: string,
+  ) {
+    setPayments((current) =>
+      current.map((payment, paymentIndex) =>
+        paymentIndex === index ? { ...payment, [field]: value } : payment,
+      ),
+    );
+  }
+
+  function addPayment() {
+    setPayments((current) =>
+      current.length >= 10
+        ? current
+        : [...current, { method: "CASH", amount: "0" }],
+    );
+  }
+
+  function removePayment(index: number) {
+    setPayments((current) =>
+      current.filter((_, paymentIndex) => paymentIndex !== index),
+    );
   }
 
   function handleCheckout(event: React.FormEvent<HTMLFormElement>) {
@@ -354,12 +466,23 @@ export function SalesManager({
       return;
     }
 
+    if (!paymentsAreValid) {
+      setError(
+        remainingPayment > 0
+          ? `Allocate the remaining ₦${money(remainingPayment)} to payment methods.`
+          : remainingPayment < 0
+            ? `Payment allocation exceeds the sale total by ₦${money(Math.abs(remainingPayment))}.`
+            : "Enter a valid amount for each payment method.",
+      );
+      return;
+    }
+
     startTransition(async () => {
       const result = await createSale({
         branchId,
         customerId,
         items: cart,
-        paymentMethod,
+        payments,
         discount: discount || "0",
         notes,
       });
@@ -374,7 +497,7 @@ export function SalesManager({
       setCustomerId("");
       setDiscount("0");
       setNotes("");
-      setPaymentMethod("CASH");
+      setPayments([{ method: "CASH", amount: "0" }]);
       router.refresh();
     });
   }
@@ -502,6 +625,7 @@ export function SalesManager({
                             event.target.value as "PRODUCT" | "SERVICE",
                           );
                           setItemId("");
+                          setSelectedMemberId("");
                         }}
                         className={fieldClass}
                       >
@@ -532,28 +656,43 @@ export function SalesManager({
                     </FormField>
                   </div>
 
-                  <FormField
-                    label="Responsible staff"
-                    htmlFor="sale-staff"
-                    required
-                  >
-                    <Select
-                      id="sale-staff"
-                      value={selectedMemberId}
-                      onChange={(event) =>
-                        setSelectedMemberId(event.target.value)
-                      }
+                  {itemType === "SERVICE" && (
+                    <FormField
+                      label="Responsible staff"
+                      htmlFor="sale-staff"
                       required
-                      className={fieldClass}
                     >
-                      <option value="">Select staff member</option>
-                      {availableStaff.map((member) => (
-                        <option key={member.id} value={member.id}>
-                          {member.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </FormField>
+                      <Select
+                        id="sale-staff"
+                        value={selectedMemberId}
+                        onChange={(event) =>
+                          setSelectedMemberId(event.target.value)
+                        }
+                        required
+                        className={fieldClass}
+                      >
+                        <option value="">Select staff member</option>
+
+                        {availableStaff.map((member) => (
+                          <option
+                            key={`member-${member.id}`}
+                            value={`member:${member.id}`}
+                          >
+                            {member.name} (Login staff)
+                          </option>
+                        ))}
+
+                        {availableBranchStaff.map((person) => (
+                          <option
+                            key={`branch-${person.id}`}
+                            value={`branch:${person.id}`}
+                          >
+                            {person.name} (Regular staff)
+                          </option>
+                        ))}
+                      </Select>
+                    </FormField>
+                  )}
 
                   {selectedProduct && (
                     <div className="rounded-lg border border-[#E2E7DF] bg-[#F2F5F0] px-3 py-2.5">
@@ -646,10 +785,39 @@ export function SalesManager({
                               </p>
                             </td>
                             <td className="px-3 py-3 text-xs text-[#687167]">
-                              {item.assignedStaffName}
+                              {item.type === "PRODUCT"
+                                ? "—"
+                                : item.assignedStaffName}
                             </td>
-                            <td className="px-3 py-3 text-right tabular-nums text-[#687167]">
-                              {money(item.price)}
+                            <td className="px-3 py-3 text-right">
+                              {canNegotiatePrices ? (
+                                <div className="space-y-1">
+                                  <Input
+                                    aria-label={`Negotiated price for ${item.name}`}
+                                    type="number"
+                                    min="0.01"
+                                    step="0.01"
+                                    placeholder={money(item.originalPrice)}
+                                    value={item.negotiatedPrice ?? ""}
+                                    onChange={(event) =>
+                                      updateNegotiatedPrice(
+                                        index,
+                                        event.target.value,
+                                      )
+                                    }
+                                    className="h-8 w-28 rounded-md border border-[#D9DED5] bg-[#FDFCF9] px-2 text-right text-[12px] outline-none focus:border-[#879B89]"
+                                  />
+                                  <p className="text-[10px] text-[#92988F]">
+                                    Original: ₦{money(item.originalPrice)}
+                                  </p>
+                                </div>
+                              ) : (
+                                <div>
+                                  <p className="tabular-nums text-[#687167]">
+                                    ₦{money(item.price)}
+                                  </p>
+                                </div>
+                              )}
                             </td>
                             <td className="px-3 py-3">
                               <Input
@@ -746,24 +914,109 @@ export function SalesManager({
                     </p>
                   </div>
 
-                  <FormField
-                    label="Payment method"
-                    htmlFor="sale-payment"
-                    required
-                  >
-                    <Select
-                      id="sale-payment"
-                      value={paymentMethod}
-                      onChange={(event) => setPaymentMethod(event.target.value)}
-                      className={fieldClass}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-medium">Payment methods</h3>
+                      <span className="text-xs text-muted-foreground">
+                        {payments.length}/10 entries
+                      </span>
+                    </div>
+
+                    {payments.map((payment, index) => (
+                      <div
+                        key={index}
+                        className="grid gap-3 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+                      >
+                        <FormField
+                          label="Method"
+                          htmlFor={`sale-payment-method-${index}`}
+                          required
+                        >
+                          <Select
+                            id={`sale-payment-method-${index}`}
+                            value={payment.method}
+                            onChange={(event) =>
+                              updatePayment(
+                                index,
+                                "method",
+                                event.target.value as PaymentEntry["method"],
+                              )
+                            }
+                            className={fieldClass}
+                          >
+                            <option value="CASH">Cash</option>
+                            <option value="BANK_TRANSFER">Bank transfer</option>
+                            <option value="CARD">Card</option>
+                            <option value="MOBILE_MONEY">Mobile money</option>
+                            <option value="OTHER">Other</option>
+                          </Select>
+                        </FormField>
+
+                        <FormField
+                          label="Amount (₦)"
+                          htmlFor={`sale-payment-amount-${index}`}
+                          required
+                        >
+                          <Input
+                            id={`sale-payment-amount-${index}`}
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={payment.amount}
+                            onChange={(event) =>
+                              updatePayment(index, "amount", event.target.value)
+                            }
+                            className={fieldClass}
+                          />
+                        </FormField>
+
+                        {payments.length > 1 && (
+                          <div className="flex items-end">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => removePayment(index)}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={addPayment}
+                      disabled={payments.length >= 10}
                     >
-                      <option value="CASH">Cash</option>
-                      <option value="BANK_TRANSFER">Bank transfer</option>
-                      <option value="CARD">Card</option>
-                      <option value="MOBILE_MONEY">Mobile money</option>
-                      <option value="OTHER">Other</option>
-                    </Select>
-                  </FormField>
+                      + Add payment method
+                    </Button>
+
+                    <div className="rounded-lg border p-3 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Allocated</span>
+                        <span className="font-medium">
+                          ₦{money(allocatedPaymentCents / 100)}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 flex justify-between">
+                        <span className="text-muted-foreground">
+                          {remainingPayment < 0 ? "Overpaid" : "Remaining"}
+                        </span>
+                        <span
+                          className={`font-semibold ${
+                            remainingPayment === 0
+                              ? "text-green-600"
+                              : "text-destructive"
+                          }`}
+                        >
+                          ₦{money(Math.abs(remainingPayment))}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
 
                   <FormField label="Notes" htmlFor="sale-notes">
                     <Textarea
@@ -788,6 +1041,7 @@ export function SalesManager({
                     disabled={
                       isPending ||
                       !branchId ||
+                      !paymentsAreValid ||
                       cart.length === 0 ||
                       !canCreateSales
                     }
@@ -876,19 +1130,70 @@ export function SalesManager({
 
                   <td className="px-4 py-3.5">
                     <div className="space-y-1.5">
-                      {sale.items.map((item) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center gap-2 text-xs"
-                        >
-                          <span className="font-medium text-[#414C42]">
-                            {item.description}
-                          </span>
-                          <span className="rounded-md bg-[#E9EEE8] px-2 py-0.5 text-[11px] font-medium text-[#58705B]">
-                            × {Number(item.quantity).toLocaleString("en-NG")}
-                          </span>
-                        </div>
-                      ))}
+                      {sale.items.map((item) => {
+                        const isNegotiated =
+                          item.priceNegotiatedByMemberId !== null;
+
+                        const difference = Number(item.priceDifference ?? 0);
+
+                        return (
+                          <div key={item.id} className="space-y-1.5 text-xs">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium text-[#414C42]">
+                                {item.description}
+                              </span>
+
+                              <span className="rounded-md bg-[#E9EEE8] px-2 py-0.5 text-[11px] font-medium text-[#58705B]">
+                                ×{" "}
+                                {Number(item.quantity).toLocaleString("en-NG")}
+                              </span>
+
+                              {isNegotiated && (
+                                <span className="rounded-md bg-[#FFF1D6] px-2 py-0.5 text-[10px] font-semibold text-[#94651B]">
+                                  Negotiated
+                                </span>
+                              )}
+                            </div>
+
+                            {isNegotiated && (
+                              <div className="space-y-1 rounded-md bg-[#F8F7F3] p-2 text-[11px] text-[#687167]">
+                                <p>
+                                  Original: ₦
+                                  {Number(
+                                    item.originalUnitPrice,
+                                  ).toLocaleString("en-NG")}
+                                </p>
+
+                                <p>
+                                  Agreed: ₦
+                                  {Number(item.unitPrice).toLocaleString(
+                                    "en-NG",
+                                  )}
+                                </p>
+
+                                <p>
+                                  {difference >= 0 ? "Discount" : "Increase"}: ₦
+                                  {Math.abs(difference).toLocaleString("en-NG")}
+                                </p>
+
+                                <p>
+                                  Authorized by:{" "}
+                                  {item.priceNegotiatedByName ?? "Unknown"}
+                                </p>
+
+                                {item.priceNegotiatedAt && (
+                                  <p>
+                                    Date:{" "}
+                                    {new Date(
+                                      item.priceNegotiatedAt,
+                                    ).toLocaleString("en-NG")}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </td>
 
@@ -896,10 +1201,24 @@ export function SalesManager({
                     {sale.branch.name}
                   </td>
 
-                  <td className="px-4 py-3.5 text-xs capitalize text-[#687167]">
-                    {sale.payments[0]
-                      ? paymentLabel(sale.payments[0].method)
-                      : "—"}
+                  <td className="px-4 py-3.5 text-xs text-[#687167]">
+                    <div className="space-y-1.5">
+                      {sale.payments.length > 0
+                        ? sale.payments.map((payment, index) => (
+                            <div
+                              key={`${payment.method}-${index}`}
+                              className="flex flex-wrap items-center gap-1"
+                            >
+                              <span className="font-medium text-[#414C42]">
+                                {paymentLabel(payment.method)}
+                              </span>
+                              <span className="text-[#858D83]">
+                                — ₦{money(payment.amount)}
+                              </span>
+                            </div>
+                          ))
+                        : "—"}
+                    </div>
                   </td>
 
                   <td className="px-4 py-3.5">

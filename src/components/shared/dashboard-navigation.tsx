@@ -17,6 +17,7 @@ import {
   UserCog,
   Settings,
   UserRound,
+  ClipboardList,
 } from "lucide-react";
 
 const workspaceLinks = [
@@ -45,6 +46,16 @@ const administrationLinks = [
   { label: "Branches", href: "/dashboard/branches", icon: Building2 },
   { label: "Staff & Permissions", href: "/dashboard/staff", icon: UserCog },
   { label: "Settings", href: "/dashboard/settings", icon: Settings },
+  {
+    label: "Manual Performance",
+    href: "/dashboard/manual-performance",
+    icon: ClipboardList,
+  },
+  {
+    label: "Consolidated Revenue",
+    href: "/dashboard/consolidated-revenue",
+    icon: ChartNoAxesCombined,
+  },
 ];
 
 type NavigationLink = {
@@ -108,10 +119,21 @@ export function DashboardNavigation({ role }: { role: string }) {
       !["/dashboard/accounting", "/dashboard/reports"].includes(link.href),
   );
 
+  const visibleAdministrationLinks = administrationLinks.filter(
+    (link) =>
+      ![
+        "/dashboard/manual-performance",
+        "/dashboard/consolidated-revenue",
+      ].includes(link.href) || role === "OWNER",
+  );
+
   return (
     <>
       <NavigationGroup title="Workspace" links={visibleWorkspaceLinks} />
-      <NavigationGroup title="Administration" links={administrationLinks} />
+      <NavigationGroup
+        title="Administration"
+        links={visibleAdministrationLinks}
+      />
     </>
   );
 }

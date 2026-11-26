@@ -35,11 +35,19 @@ export async function setBranchStock(input: unknown): Promise<ActionResult> {
       select: {
         organizationId: true,
         id: true,
+        role: true,
       },
     });
 
     if (!member) {
       return { success: false, error: "No active organization found." };
+    }
+
+    if (member.role !== "OWNER") {
+      return {
+        success: false,
+        error: "You do not have permission to manage inventory.",
+      };
     }
 
     const { branchId, productId, quantity, reason } = parsed.data;
@@ -263,6 +271,7 @@ export async function getDailyActivity(input: DailyActivityInput) {
             productId: true,
             serviceId: true,
             assignedMemberId: true,
+            assignedBranchStaffId: true,
             assignedMemberName: true,
             quantity: true,
             unitPrice: true,
@@ -291,7 +300,7 @@ export async function getDailyActivity(input: DailyActivityInput) {
         branchName: sale.branch.name,
         timestamp: sale.createdAt.toISOString(),
         processedBy: sale.createdBy?.user.name ?? "Unknown",
-        staffId: item.assignedMemberId,
+        staffId: item.assignedMemberId ?? item.assignedBranchStaffId,
         staffName: item.assignedMemberName ?? "Staff member",
         itemName: item.description,
         type: item.productId ? "PRODUCT" : "SERVICE",
