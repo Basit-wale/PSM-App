@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { hasPermission } from "@/lib/permissions";
@@ -125,6 +126,9 @@ export default async function DashboardPage() {
     weeklyPayments,
     weeklyAppointments,
     recentSales,
+    recentAppointments,
+    recentPayments,
+    recentInventoryMovements,
     todayAppointments,
     pendingExpenses,
     outOfStockProducts,
@@ -220,6 +224,67 @@ export default async function DashboardPage() {
             status: true,
             createdAt: true,
             branch: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        })
+      : Promise.resolve([]),
+
+    // Recent appointments
+    canViewAppointments
+      ? db.appointment.findMany({
+          where: {
+            organizationId,
+            ...branchFilter,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 5,
+          select: {
+            createdAt: true,
+            status: true,
+          },
+        })
+      : Promise.resolve([]),
+
+    // Recent completed payments
+    canViewSales
+      ? db.payment.findMany({
+          where: {
+            organizationId,
+            status: "COMPLETED",
+            sale: branchFilter,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 5,
+          select: {
+            createdAt: true,
+            amount: true,
+          },
+        })
+      : Promise.resolve([]),
+
+    // Recent stock movements
+    canViewInventory
+      ? db.inventoryMovement.findMany({
+          where: {
+            organizationId,
+            ...branchFilter,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 5,
+          select: {
+            createdAt: true,
+            type: true,
+            quantity: true,
+            product: {
               select: {
                 name: true,
               },
@@ -373,6 +438,34 @@ export default async function DashboardPage() {
   const pendingExpenseCount = pendingExpenses?._count.id ?? 0;
   const pendingExpenseAmount = pendingExpenses?._sum.amount ?? 0;
 
+  const recentActivity = [
+    ...recentAppointments.map((item, index) => ({
+      id: `appointment-${index}`,
+      createdAt: item.createdAt,
+      title: "Appointment activity",
+      description: `Status: ${item.status.replaceAll("_", " ").toLowerCase()}`,
+      type: "appointment",
+    })),
+
+    ...recentPayments.map((item, index) => ({
+      id: `payment-${index}`,
+      createdAt: item.createdAt,
+      title: "Payment received",
+      description: formatAmount(item.amount),
+      type: "payment",
+    })),
+
+    ...recentInventoryMovements.map((item, index) => ({
+      id: `inventory-${index}`,
+      createdAt: item.createdAt,
+      title: item.product.name,
+      description: `${item.type.replaceAll("_", " ")} · ${Number(item.quantity)} units`,
+      type: "inventory",
+    })),
+  ]
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, 8);
+
   return (
     <div className="mx-auto max-w-[1600px] space-y-7">
       {/* Page heading */}
@@ -459,7 +552,7 @@ export default async function DashboardPage() {
       )}
 
       {/* Weekly business performance */}
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-1">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
         {/* Weekly revenue chart */}
         {canViewSales && (
           <section className="rounded-xl border border-[#E3E4DC] bg-[#FBFAF7] p-5">
@@ -489,7 +582,7 @@ export default async function DashboardPage() {
               </div>
             </div>
 
-            <div className="grid h-44 grid-cols-7 gap-3">
+            <div className="grid h-48 grid-cols-7 gap-3">
               {weeklyRevenue.map((day) => (
                 <div
                   key={day.label}
@@ -499,9 +592,9 @@ export default async function DashboardPage() {
                     {day.amount > 0 ? formatAmount(day.amount) : "—"}
                   </p>
 
-                  <div className="flex h-28 w-full items-end justify-center rounded-t-md bg-[#F0F1EB]">
+                  <div className="flex h-32 w-full items-end rounded-t-md bg-[#F0F1EB]">
                     <div
-                      className="w-full max-w-10 rounded-t-md bg-[#819582] transition-all duration-300"
+                      className="mx-auto w-[50%] rounded-t-md bg-[#819582] transition-all duration-300"
                       style={{
                         height:
                           day.amount > 0
@@ -517,6 +610,63 @@ export default async function DashboardPage() {
                 </div>
               ))}
             </div>
+          </section>
+        )}
+
+        {/* Recent Activity */}
+        {(canViewAppointments || canViewSales || canViewInventory) && (
+          <section className="h-full rounded-xl border border-[#E3E4DC] bg-[#FBFAF7] p-5">
+            <SectionHeading
+              title="Recent Activity"
+              description="Latest activity across your salon"
+            />
+
+            {recentActivity.length === 0 ? (
+              <p className="py-8 text-center text-[12px] text-[#858D84]">
+                No recent activity to display.
+              </p>
+            ) : (
+              <div className="mt-5 space-y-3">
+                {recentActivity.slice(0, 4).map((item) => (
+                  <div key={item.id} className="flex items-start gap-3">
+                    <div
+                      className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                        item.type === "payment"
+                          ? "bg-[#EAF0E9] text-[#617968]"
+                          : item.type === "appointment"
+                            ? "bg-[#F1EEE5] text-[#A58A55]"
+                            : "bg-[#E9EEF2] text-[#71899B]"
+                      }`}
+                    >
+                      <span className="text-[13px] font-semibold">
+                        {item.type === "payment"
+                          ? "₦"
+                          : item.type === "appointment"
+                            ? "A"
+                            : "S"}
+                      </span>
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[12px] font-medium text-[#465047]">
+                        {item.title}
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-[#858D84]">
+                        {item.description}
+                      </p>
+                      <p className="mt-1 text-[10px] text-[#A0A69D]">
+                        {item.createdAt.toLocaleString(undefined, {
+                          day: "numeric",
+                          month: "short",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         )}
 
@@ -641,13 +791,22 @@ export default async function DashboardPage() {
             })}
           </div>
 
-          <div className="mt-5 border-t border-[#E7E7DF] pt-4">
-            <p className="text-[11px] text-[#858D84]">
-              Total appointments today
-            </p>
-            <p className="mt-1 text-xl font-semibold tabular-nums text-[#465047]">
-              {appointmentCounts.total}
-            </p>
+          <div className="mt-5 flex flex-wrap items-end justify-between gap-3 border-t border-[#E7E7DF] pt-4">
+            <div>
+              <p className="text-[11px] text-[#858D84]">
+                Total appointments today
+              </p>
+              <p className="mt-1 text-xl font-semibold tabular-nums text-[#465047]">
+                {appointmentCounts.total}
+              </p>
+            </div>
+
+            <Link
+              href="/dashboard/appointments"
+              className="text-[11px] font-semibold text-[#718675] transition-colors hover:text-[#39443B]"
+            >
+              View all appointments &rarr;
+            </Link>
           </div>
         </section>
       )}
@@ -716,6 +875,15 @@ export default async function DashboardPage() {
               </table>
             </div>
           )}
+
+          <div className="flex justify-end border-t border-[#E7E7DF] px-5 py-3">
+            <Link
+              href="/dashboard/sales"
+              className="text-[11px] font-semibold text-[#718675] transition-colors hover:text-[#39443B]"
+            >
+              View all recent sales →
+            </Link>
+          </div>
         </section>
       )}
 
@@ -756,6 +924,15 @@ export default async function DashboardPage() {
               ))}
             </div>
           )}
+
+          <div className="flex justify-end border-t border-[#E7E7DF] px-5 py-3">
+            <Link
+              href="/dashboard/inventory"
+              className="text-[11px] font-semibold text-[#718675] transition-colors hover:text-[#39443B]"
+            >
+              View all inventory →
+            </Link>
+          </div>
         </section>
       )}
     </div>

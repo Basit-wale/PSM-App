@@ -49,3 +49,6 @@ next-env.d.ts
 
 # Local schema backup
 schema.prisma.backup
+
+# Local Netlify folder
+.netlify
